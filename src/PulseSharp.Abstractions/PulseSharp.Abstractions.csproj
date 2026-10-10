@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>PulseSharp</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Contracts for PulseSharp, lightweight events and jobs for .NET. Reference this package from handlers and libraries. It has no dependencies.</Description>
+  </PropertyGroup>
+
+</Project>
