@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/PulseSharp.Abstractions/PulseSharp.Abstractions.csproj" />
+    <Project Path="src/PulseSharp/PulseSharp.csproj" />
   </Folder>
 </Solution>
