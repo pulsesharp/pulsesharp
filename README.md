@@ -9,7 +9,7 @@
 
 ---
 
-> **Status: preview (`0.2`).** Events and jobs work with the in-memory store. SQLite, PostgreSQL and sync are coming (see the [roadmap](docs/vision.md#roadmap)). The API may change before `1.0`.
+> **Status: preview (`0.2`).** Events and jobs work with the in-memory store. SQLite, PostgreSQL and sync are coming (see the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap)). The API may change before `1.0`.
 
 ## What is PulseSharp?
 
@@ -122,8 +122,9 @@ Numbers for the SQLite and PostgreSQL stores will follow with those stores.
 
 ## Learn more
 
-- [Vision](docs/vision.md): why PulseSharp exists and where it is going
-- [Architecture](docs/architecture.md): concepts, packages and the store contract
+- 📖 **[Documentation](https://pulsesharp.github.io/pulsesharp/)**: guides, concepts and the API reference
+- [Getting started](https://pulsesharp.github.io/pulsesharp/guide/getting-started): your first event and job in five minutes
+- [Vision and roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision)
 - [Contributing](CONTRIBUTING.md)
 
 ## License
