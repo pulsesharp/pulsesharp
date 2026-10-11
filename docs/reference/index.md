@@ -5,6 +5,7 @@ The reference is generated from the XML documentation in the source code, so it 
 | Package | Contents |
 |---|---|
 | [PulseSharp.Abstractions](/reference/abstractions) | `IPulse`, handler interfaces, contexts, stream names, options, attributes. Reference it from libraries. |
-| [PulseSharp](/reference/core) | `AddPulseSharp`, `PulseSharpBuilder`, `IPulseControl` and its types. Reference it from the app. |
+| [PulseSharp](/reference/core) | `AddPulseSharp`, `PulseSharpBuilder`, `IPulseControl`, and the store contract (`IPulseStore`). Reference it from the app. |
+| [PulseSharp.Sqlite](/reference/sqlite) | `UseSqlite` and `SqliteStore`. |
 
-Everything public lives in the `PulseSharp` namespace, except `AddPulseSharp`, which is in `Microsoft.Extensions.DependencyInjection` so it shows up next to your other registrations.
+Everyday types live in the `PulseSharp` namespace (including `UseSqlite`). `AddPulseSharp` is in `Microsoft.Extensions.DependencyInjection`, next to your other registrations. Types for store authors are in `PulseSharp.Stores`, and the SQLite store class is in `PulseSharp.Sqlite`.

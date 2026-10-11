@@ -32,4 +32,8 @@ A handler finishes its work, then PulseSharp moves the handler's cursor. If the 
 
 ## In-memory store
 
-The in-memory store keeps everything in the process. When the app stops, events, cursors and jobs are gone. Use it for tests, samples and learning; durable stores arrive in 0.3 (SQLite) and 0.4 (PostgreSQL).
+The in-memory store keeps everything in the process. When the app stops, events, cursors and jobs are gone. Use it for tests, samples and learning. With the [SQLite store](/guide/stores) everything survives a restart; PostgreSQL follows in 0.4.
+
+## Graceful shutdown
+
+When the app stops normally, a handler that has finished an event always saves its cursor, and a running job is handed back without counting the attempt. Duplicates only come from crashes.

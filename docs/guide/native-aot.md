@@ -24,6 +24,10 @@ pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
 
 They are marked `[RequiresDynamicCode]` and `[RequiresUnreferencedCode]`, so the compiler warns you when you publish with `PublishAot` or `PublishTrimmed`. Use the explicit methods in those apps.
 
+## JSON
+
+Events and jobs are stored as JSON. In a trimmed or Native AOT app, give PulseSharp a source-generated `JsonSerializerContext` through `pulse.JsonOptions` — see [How data is stored](/guide/stores#how-data-is-stored).
+
 ## Names
 
 `[EventName]`, `[JobName]` and `[HandlerName]` are read from your types; keep them on the types you register explicitly, and the trimmer keeps them too.

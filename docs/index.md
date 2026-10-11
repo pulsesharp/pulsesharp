@@ -62,7 +62,7 @@ await pulse.Enqueue(new ExportReport(today));
 ```
 
 ::: warning Preview
-PulseSharp is in preview. Events and jobs work with the in-memory store today; SQLite, PostgreSQL and sync are on the [roadmap](/concepts/vision#roadmap). The API may change before 1.0.
+PulseSharp is in preview. Events and jobs work with the in-memory and SQLite stores today; PostgreSQL and sync are on the [roadmap](/concepts/vision#roadmap). The API may change before 1.0.
 :::
 
 </div>

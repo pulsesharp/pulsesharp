@@ -54,6 +54,7 @@ export default defineConfig({
         {
           text: 'Setup',
           items: [
+            { text: 'Stores (SQLite)', link: '/guide/stores' },
             { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Desktop, web and worker apps', link: '/guide/hosting' },
             { text: 'Trimming and Native AOT', link: '/guide/native-aot' }
@@ -76,7 +77,8 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/reference/' },
             { text: 'PulseSharp.Abstractions', link: '/reference/abstractions' },
-            { text: 'PulseSharp', link: '/reference/core' }
+            { text: 'PulseSharp', link: '/reference/core' },
+            { text: 'PulseSharp.Sqlite', link: '/reference/sqlite' }
           ]
         }
       ]

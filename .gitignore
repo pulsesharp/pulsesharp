@@ -437,3 +437,4 @@ docs/.vitepress/dist/
 docs/.vitepress/cache/
 docs/reference/abstractions.md
 docs/reference/core.md
+docs/reference/sqlite.md

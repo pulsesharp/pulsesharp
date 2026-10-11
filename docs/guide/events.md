@@ -114,7 +114,7 @@ await tx.CommitAsync(ct);
 ```
 
 ::: info
-The in-memory store ignores the transaction. The SQLite and PostgreSQL stores (coming in 0.3 and 0.4) will honour it.
+The SQLite store honours the transaction (see [Stores](/guide/stores#saving-your-data-and-the-event-together)); the in-memory store ignores it.
 :::
 
 ## Nodes
