@@ -4,6 +4,19 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.2.0-alpha] - 2026-10-11
+
+### Added
+
+- Jobs: `IPulse.Enqueue` with an optional `RunAt`, `OnJob<TJob>` and `AddJobHandler<TJob, THandler>`, and `AddHandler` / `AddHandlersFromAssembly` also find `IJobHandler<TJob>` classes. A job type has exactly one handler.
+- Job retries with a growing delay up to `MaxAttempts`, progress through `JobContext.Report`, cooperative cancel, `MaxParallelJobs` (default 4), and leases (`JobLease`, default 5 minutes) renewed by a heartbeat.
+- `IPulseControl`: `GetJob`, `GetJobs`, `CancelJob` and `RetryJob`, with the public `JobInfo` and `JobState` types.
+- The console sample exports a report as a job; a job benchmark.
+
+### Changed
+
+- `IPulse.Enqueue` no longer throws `NotSupportedException`.
+
 ## [0.1.0-alpha] - 2026-10-11
 
 ### Added
@@ -27,6 +40,7 @@ First preview. Events only, with the in-memory store.
 
 - `IPulse.Enqueue` throws `NotSupportedException`. Jobs arrive in 0.2.
 
-[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.1.0-alpha...HEAD
+[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.2.0-alpha...HEAD
+[0.2.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.1.0-alpha...v0.2.0-alpha
 [0.1.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.0.1-alpha...v0.1.0-alpha
 [0.0.1-alpha]: https://github.com/pulsesharp/pulsesharp/releases/tag/v0.0.1-alpha

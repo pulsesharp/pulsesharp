@@ -9,7 +9,7 @@
 
 ---
 
-> **Status: preview (`0.1`).** Events work with the in-memory store. Jobs, SQLite, PostgreSQL and sync are coming (see the [roadmap](docs/vision.md#roadmap)). The API may change before `1.0`.
+> **Status: preview (`0.2`).** Events and jobs work with the in-memory store. SQLite, PostgreSQL and sync are coming (see the [roadmap](docs/vision.md#roadmap)). The API may change before `1.0`.
 
 ## What is PulseSharp?
 
@@ -37,16 +37,29 @@ public sealed record SaleStream(Guid SaleId) : StreamName
     }
 }
 
-// Setup: choose a store and add handlers. Every handler has a stable name.
+// Setup: choose a store and add handlers. Every event handler has a stable name;
+// every job type has exactly one handler.
 builder.Services.AddPulseSharp(pulse =>
 {
     pulse.UseInMemory();
     pulse.On<SaleCompleted>("print-receipt", async (sale, context, ct) => await PrintReceipt(sale, ct));
     pulse.AddHandler<SaleCompleted, UpdateStock>();
+    pulse.OnJob<ExportReport>(async (job, context, ct) =>
+    {
+        for (var page = 1; page <= 10; page++)
+        {
+            await ExportPage(job, page, ct);
+            await context.Report(page, 10, ct);
+        }
+    });
 });
 
 // Something happened: emit it from anywhere through IPulse
 await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total));
+
+// Work to do: run it now, or later, with retries, progress and cancel
+var jobId = await pulse.Enqueue(new ExportReport(today));
+await pulse.Enqueue(new ExportReport(today), new EnqueueOptions { RunAt = tonight });
 
 // A handler class, created through dependency injection for every event
 public sealed class UpdateStock(IStock stock) : IEventHandler<SaleCompleted>
@@ -69,9 +82,10 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - Every event gets a time-ordered, globally unique id (UUIDv7) and records the node that emitted it.
 - **Several streams in parallel** per handler (`MaxParallelStreams`, default 4), still in order within each stream.
 - **`IPulseControl`**: list the cursors of every handler, **retry** or **skip** a failed event, or **rewind** a handler to handle everything again.
-- **Handler discovery**: `pulse.AddHandlersFromAssembly(typeof(Program).Assembly)`, or explicit `AddHandler<TEvent, THandler>()` for trimming and Native AOT.
+- **Handler discovery**: `pulse.AddHandlersFromAssembly(typeof(Program).Assembly)`, or explicit `AddHandler<TEvent, THandler>()` / `AddJobHandler<TJob, THandler>()` for trimming and Native AOT.
+- **Jobs**: `Enqueue` now or later (`RunAt`), one handler per job type, retries with a growing delay, progress (`context.Report`), cancel (the handler's token), `MaxParallelJobs` (default 4), and leases so a job left behind by a stopped app instance runs again. `IPulseControl` reads, lists, cancels and retries jobs.
 
-See [`samples/ConsoleSample`](samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them.
+See [`samples/ConsoleSample`](samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them; then an end-of-day job reports its progress.
 
 ## Performance
 
@@ -82,6 +96,7 @@ In-memory store, one machine, BenchmarkDotNet short run ([`benchmarks/`](benchma
 | Emit (no handlers) | ~0.5 µs | 542 B |
 | Emit + deliver to 1 handler | ~2.2 µs | 1.0 KB |
 | Emit + deliver to 3 handlers | ~5.6 µs | 1.9 KB |
+| Enqueue + run a job | ~21 µs | 4.5 KB |
 
 Numbers for the SQLite and PostgreSQL stores will follow with those stores.
 
@@ -104,7 +119,6 @@ Numbers for the SQLite and PostgreSQL stores will follow with those stores.
 | `PulseSharp.Sync` | Device ↔ cloud sync | Planned (0.5) |
 | `PulseSharp.Monitor` | Optional web UI | Planned (0.6) |
 
-Jobs (`IPulse.Enqueue`) arrive in 0.2. In this preview, `Enqueue` throws `NotSupportedException`.
 
 ## Learn more
 
