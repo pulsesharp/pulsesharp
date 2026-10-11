@@ -1,4 +1,10 @@
 <Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/PulseSharp.Benchmarks/PulseSharp.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/ConsoleSample/ConsoleSample.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/PulseSharp.Abstractions/PulseSharp.Abstractions.csproj" />
     <Project Path="src/PulseSharp/PulseSharp.csproj" />
