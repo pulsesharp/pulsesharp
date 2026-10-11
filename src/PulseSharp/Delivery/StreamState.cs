@@ -10,7 +10,7 @@ internal sealed class StreamState(string stream)
 
     public long Position { get; set; }
 
-    public CursorStatus Status { get; set; } = CursorStatus.Active;
+    public CursorState Status { get; set; } = CursorState.Active;
 
     public int Attempts { get; set; }
 
@@ -20,7 +20,7 @@ internal sealed class StreamState(string stream)
 
     public bool IsWaitingAt(DateTimeOffset now)
     {
-        return Status == CursorStatus.Failed || (RetryAt is { } retryAt && retryAt > now);
+        return Status == CursorState.Failed || (RetryAt is { } retryAt && retryAt > now);
     }
 
     public Cursor ToCursor(string handlerName)

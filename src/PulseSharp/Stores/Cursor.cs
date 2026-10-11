@@ -4,7 +4,7 @@ internal sealed record Cursor(
     string HandlerName,
     string Stream,
     long Position,
-    CursorStatus Status,
+    CursorState Status,
     int Attempts,
     string? LastError,
     DateTimeOffset? RetryAt

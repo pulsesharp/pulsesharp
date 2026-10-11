@@ -7,6 +7,7 @@ internal sealed record PulseSharpSettings(
     int MaxAttempts,
     TimeSpan RetryDelay,
     TimeSpan PollInterval,
+    int MaxParallelStreams,
     IReadOnlyList<Subscription> Subscriptions
 )
 {

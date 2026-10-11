@@ -21,6 +21,14 @@ internal sealed class TestHost : IAsyncDisposable
         }
     }
 
+    public IPulseControl Control
+    {
+        get
+        {
+            return _host.Services.GetRequiredService<IPulseControl>();
+        }
+    }
+
     public static async Task<TestHost> Start(
         Action<PulseSharpBuilder> configure,
         Action<IServiceCollection>? registerServices = null

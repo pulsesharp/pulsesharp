@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PulseSharp;
+using PulseSharp.Control;
 using PulseSharp.Delivery;
 using PulseSharp.Stores;
 
@@ -13,7 +14,8 @@ namespace Microsoft.Extensions.DependencyInjection;
 public static class PulseSharpServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds PulseSharp: <see cref="IPulse"/> for emitting events, and a hosted service that delivers them to handlers.
+    /// Adds PulseSharp: <see cref="IPulse"/> for emitting events, <see cref="IPulseControl"/> for steering handlers,
+    /// and a hosted service that delivers events to handlers.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configure">Chooses the store and adds the handlers.</param>
@@ -52,11 +54,14 @@ public static class PulseSharpServiceCollectionExtensions
         services.AddSingleton(builder.EventNames);
         services.AddSingleton(store);
         services.AddSingleton<WakeUpSignal>();
+        services.AddSingleton<ControlRequests>();
         services.AddSingleton<IPulse, Pulse>();
+        services.AddSingleton<IPulseControl, PulseControl>();
         services.AddHostedService(provider => new PulseSharpHostedService(
             settings,
             store,
             provider.GetRequiredService<WakeUpSignal>(),
+            provider.GetRequiredService<ControlRequests>(),
             provider,
             provider.GetRequiredService<TimeProvider>(),
             provider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance

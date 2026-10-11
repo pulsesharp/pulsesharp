@@ -47,6 +47,12 @@ public sealed class PulseSharpBuilder
     /// </summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// How many streams one handler works on at the same time. Events of one stream are always handled
+    /// in order, one at a time. The default is 4.
+    /// </summary>
+    public int MaxParallelStreams { get; set; } = 4;
+
     internal EventNames EventNames { get; } = new();
 
     /// <summary>
@@ -120,21 +126,42 @@ public sealed class PulseSharpBuilder
     public PulseSharpBuilder AddHandler<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.Interfaces)] THandler>()
         where THandler : class
     {
-        var eventTypes = typeof(THandler)
-            .GetInterfaces()
-            .Where(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEventHandler<>))
-            .Select(type => type.GetGenericArguments()[0])
-            .ToList();
-
+        var eventTypes = HandledEventTypes(typeof(THandler));
         if (eventTypes.Count == 0)
         {
             throw new InvalidOperationException($"{typeof(THandler).FullName} does not implement IEventHandler<TEvent>.");
         }
 
-        var addHandler = typeof(PulseSharpBuilder).GetMethod(nameof(AddHandlerFor), BindingFlags.NonPublic | BindingFlags.Instance)!;
-        foreach (var eventType in eventTypes)
+        AddHandlerType(typeof(THandler), eventTypes);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds every handler class in an assembly: each public or internal, non-abstract class that implements
+    /// <see cref="IEventHandler{TEvent}"/>.
+    /// </summary>
+    /// <param name="assembly">The assembly to scan, for example <c>typeof(Program).Assembly</c>.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException">Two handlers share a name.</exception>
+    [RequiresDynamicCode(ReflectionMessage)]
+    [RequiresUnreferencedCode(ReflectionMessage)]
+    public PulseSharpBuilder AddHandlersFromAssembly(Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        var handlerTypes = assembly
+            .GetTypes()
+            .Where(type => type is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false })
+            .Where(IsPublicOrInternal)
+            .OrderBy(type => type.FullName, StringComparer.Ordinal);
+
+        foreach (var handlerType in handlerTypes)
         {
-            addHandler.MakeGenericMethod(eventType, typeof(THandler)).Invoke(this, null);
+            var eventTypes = HandledEventTypes(handlerType);
+            if (eventTypes.Count > 0)
+            {
+                AddHandlerType(handlerType, eventTypes);
+            }
         }
 
         return this;
@@ -157,7 +184,19 @@ public sealed class PulseSharpBuilder
             throw new InvalidOperationException("PulseSharp: RetryDelay and PollInterval must be greater than zero.");
         }
 
-        return new PulseSharpSettings(Node, MaxAttempts, RetryDelay, PollInterval, _subscriptions.Values.ToList());
+        if (MaxParallelStreams < 1)
+        {
+            throw new InvalidOperationException("PulseSharp: MaxParallelStreams must be at least 1.");
+        }
+
+        return new PulseSharpSettings(
+            Node,
+            MaxAttempts,
+            RetryDelay,
+            PollInterval,
+            MaxParallelStreams,
+            _subscriptions.Values.ToList()
+        );
     }
 
     internal IPulseStore CreateStore()
@@ -168,6 +207,32 @@ public sealed class PulseSharpBuilder
         }
 
         return _createStore();
+    }
+
+    [RequiresDynamicCode(ReflectionMessage)]
+    [RequiresUnreferencedCode(ReflectionMessage)]
+    private void AddHandlerType(Type handlerType, IReadOnlyList<Type> eventTypes)
+    {
+        var addHandler = typeof(PulseSharpBuilder).GetMethod(nameof(AddHandlerFor), BindingFlags.NonPublic | BindingFlags.Instance)!;
+        foreach (var eventType in eventTypes)
+        {
+            addHandler.MakeGenericMethod(eventType, handlerType).Invoke(this, null);
+        }
+    }
+
+    private static bool IsPublicOrInternal(Type type)
+    {
+        return type.IsPublic || type.IsNotPublic || type.IsNestedPublic || type.IsNestedAssembly;
+    }
+
+    [RequiresUnreferencedCode(ReflectionMessage)]
+    private static List<Type> HandledEventTypes(Type handlerType)
+    {
+        return handlerType
+            .GetInterfaces()
+            .Where(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEventHandler<>))
+            .Select(type => type.GetGenericArguments()[0])
+            .ToList();
     }
 
     private void AddHandlerFor<TEvent, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] THandler>()

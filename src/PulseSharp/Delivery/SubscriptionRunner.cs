@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using PulseSharp.Control;
 using PulseSharp.Stores;
 
 namespace PulseSharp.Delivery;
@@ -7,6 +8,7 @@ internal sealed class SubscriptionRunner(
     Subscription subscription,
     IPulseStore store,
     WakeUpSignal signal,
+    ControlRequests requests,
     PulseSharpSettings settings,
     IServiceProvider services,
     TimeProvider time,
@@ -52,6 +54,7 @@ internal sealed class SubscriptionRunner(
     {
         try
         {
+            await ApplyControlRequests(cancellationToken).ConfigureAwait(false);
             await ReadNewEvents(cancellationToken).ConfigureAwait(false);
             return await DeliverPendingStreams(cancellationToken).ConfigureAwait(false);
         }
@@ -91,8 +94,73 @@ internal sealed class SubscriptionRunner(
         }
     }
 
+    private async Task ApplyControlRequests(CancellationToken cancellationToken)
+    {
+        while (requests.TryTake(subscription.Name, out var request))
+        {
+            try
+            {
+                await Apply(request, cancellationToken).ConfigureAwait(false);
+                request.Completion.TrySetResult();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                request.Completion.TrySetCanceled(cancellationToken);
+                throw;
+            }
+            catch (Exception exception)
+            {
+                request.Completion.TrySetException(exception);
+            }
+        }
+    }
+
+    private Task Apply(ControlRequest request, CancellationToken cancellationToken)
+    {
+        return request.Action switch
+        {
+            ControlAction.Retry => RetryStream(request.Stream!, cancellationToken),
+            ControlAction.Skip => SkipWaitingEvent(request.Stream!, cancellationToken),
+            _ => RewindAllStreams(cancellationToken)
+        };
+    }
+
+    private Task RetryStream(string stream, CancellationToken cancellationToken)
+    {
+        var state = ExistingStateOf(stream);
+        ClearFailure(state);
+        return SaveCursor(state, cancellationToken);
+    }
+
+    private Task SkipWaitingEvent(string stream, CancellationToken cancellationToken)
+    {
+        var state = ExistingStateOf(stream);
+        if (!state.Pending.TryDequeue(out var skipped))
+        {
+            throw new InvalidOperationException($"Handler '{subscription.Name}' has no waiting event in stream '{stream}'.");
+        }
+
+        state.Position = skipped.StreamPosition;
+        ClearFailure(state);
+        return SaveCursor(state, cancellationToken);
+    }
+
+    private async Task RewindAllStreams(CancellationToken cancellationToken)
+    {
+        _scanPosition = 0;
+        foreach (var state in _streams.Values)
+        {
+            state.Pending.Clear();
+            state.Position = 0;
+            ClearFailure(state);
+            await SaveCursor(state, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     private async Task<DateTimeOffset?> DeliverPendingStreams(CancellationToken cancellationToken)
     {
+        var now = time.GetUtcNow();
+        var ready = new List<StreamState>();
         DateTimeOffset? nextRetryAt = null;
 
         foreach (var state in _streams.Values)
@@ -102,17 +170,45 @@ internal sealed class SubscriptionRunner(
                 continue;
             }
 
-            if (state.IsWaitingAt(time.GetUtcNow()))
+            if (state.IsWaitingAt(now))
             {
                 nextRetryAt = Earliest(nextRetryAt, state.RetryAt);
                 continue;
             }
 
-            var retryAt = await DeliverStream(state, cancellationToken).ConfigureAwait(false);
+            ready.Add(state);
+        }
+
+        var retries = await DeliverStreams(ready, cancellationToken).ConfigureAwait(false);
+        foreach (var retryAt in retries)
+        {
             nextRetryAt = Earliest(nextRetryAt, retryAt);
         }
 
         return nextRetryAt;
+    }
+
+    private async Task<DateTimeOffset?[]> DeliverStreams(List<StreamState> ready, CancellationToken cancellationToken)
+    {
+        var retries = new DateTimeOffset?[ready.Count];
+        if (ready.Count == 1)
+        {
+            retries[0] = await DeliverStream(ready[0], cancellationToken).ConfigureAwait(false);
+            return retries;
+        }
+
+        var options = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = settings.MaxParallelStreams,
+            CancellationToken = cancellationToken
+        };
+
+        await Parallel.ForEachAsync(Enumerable.Range(0, ready.Count), options, async (index, token) =>
+        {
+            retries[index] = await DeliverStream(ready[index], token).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        return retries;
     }
 
     private async Task<DateTimeOffset?> DeliverStream(StreamState state, CancellationToken cancellationToken)
@@ -127,14 +223,34 @@ internal sealed class SubscriptionRunner(
 
             state.Pending.Dequeue();
             state.Position = stored.StreamPosition;
-            state.Status = CursorStatus.Active;
-            state.Attempts = 0;
-            state.LastError = null;
-            state.RetryAt = null;
-            await store.SaveCursor(state.ToCursor(subscription.Name), cancellationToken).ConfigureAwait(false);
+            ClearFailure(state);
+            await SaveCursor(state, cancellationToken).ConfigureAwait(false);
         }
 
         return null;
+    }
+
+    private Task SaveCursor(StreamState state, CancellationToken cancellationToken)
+    {
+        return store.SaveCursor(state.ToCursor(subscription.Name), cancellationToken);
+    }
+
+    private StreamState ExistingStateOf(string stream)
+    {
+        if (!_streams.TryGetValue(stream, out var state))
+        {
+            throw new InvalidOperationException($"Handler '{subscription.Name}' has no cursor for stream '{stream}'.");
+        }
+
+        return state;
+    }
+
+    private static void ClearFailure(StreamState state)
+    {
+        state.Status = CursorState.Active;
+        state.Attempts = 0;
+        state.LastError = null;
+        state.RetryAt = null;
     }
 
     private async Task<Exception?> TryHandle(StoredEvent stored, StreamState state, CancellationToken cancellationToken)
@@ -179,7 +295,7 @@ internal sealed class SubscriptionRunner(
 
         if (state.Attempts >= settings.MaxAttempts)
         {
-            state.Status = CursorStatus.Failed;
+            state.Status = CursorState.Failed;
             state.RetryAt = null;
             Log.HandlerStopped(logger, failure, subscription.Name, stored.EventId, stored.Stream, state.Attempts);
             await store.SaveCursor(state.ToCursor(subscription.Name), cancellationToken).ConfigureAwait(false);
@@ -187,7 +303,7 @@ internal sealed class SubscriptionRunner(
         }
 
         var retryAt = time.GetUtcNow() + settings.RetryDelayFor(state.Attempts);
-        state.Status = CursorStatus.Retrying;
+        state.Status = CursorState.Retrying;
         state.RetryAt = retryAt;
         Log.HandlerWillRetry(
             logger,
