@@ -7,9 +7,39 @@ internal sealed class PulseControl(
     PulseSharpSettings settings,
     IPulseStore store,
     ControlRequests requests,
-    WakeUpSignal signal
+    WakeUpSignal signal,
+    TimeProvider time
 ) : IPulseControl
 {
+    public async Task<JobInfo?> GetJob(Guid jobId, CancellationToken cancellationToken = default)
+    {
+        var job = await store.GetJob(jobId, cancellationToken).ConfigureAwait(false);
+        return job?.ToJobInfo();
+    }
+
+    public async Task<IReadOnlyList<JobInfo>> GetJobs(JobState? state = null, int limit = 100, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        var jobs = await store.GetJobs(state, limit, cancellationToken).ConfigureAwait(false);
+        return jobs.Select(job => job.ToJobInfo()).ToList();
+    }
+
+    public Task<bool> CancelJob(Guid jobId, CancellationToken cancellationToken = default)
+    {
+        return store.RequestCancel(jobId, time.GetUtcNow(), cancellationToken);
+    }
+
+    public async Task<bool> RetryJob(Guid jobId, CancellationToken cancellationToken = default)
+    {
+        var willRun = await store.RetryJob(jobId, time.GetUtcNow(), cancellationToken).ConfigureAwait(false);
+        if (willRun)
+        {
+            signal.Notify();
+        }
+
+        return willRun;
+    }
+
     public async Task<IReadOnlyList<HandlerCursor>> GetCursors(string? handlerName = null, CancellationToken cancellationToken = default)
     {
         var handlerNames = handlerName is null

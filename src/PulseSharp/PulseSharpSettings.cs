@@ -1,4 +1,5 @@
 using PulseSharp.Delivery;
+using PulseSharp.Jobs;
 
 namespace PulseSharp;
 
@@ -8,7 +9,10 @@ internal sealed record PulseSharpSettings(
     TimeSpan RetryDelay,
     TimeSpan PollInterval,
     int MaxParallelStreams,
-    IReadOnlyList<Subscription> Subscriptions
+    int MaxParallelJobs,
+    TimeSpan JobLease,
+    IReadOnlyList<Subscription> Subscriptions,
+    IReadOnlyDictionary<string, JobRegistration> Jobs
 )
 {
     public static readonly TimeSpan MaxRetryDelay = TimeSpan.FromMinutes(5);

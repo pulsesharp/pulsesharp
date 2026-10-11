@@ -57,6 +57,24 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void RefusesTwoHandlersForOneJobType()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => Configure(pulse =>
+        {
+            pulse.OnJob<ImportProducts>((_, _, _) => Task.CompletedTask);
+            pulse.OnJob<ImportProducts>((_, _, _) => Task.CompletedTask);
+        }));
+
+        Assert.Contains("exactly one handler", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RefusesAJobLeaseShorterThanThePollInterval()
+    {
+        Assert.Throws<InvalidOperationException>(() => Configure(pulse => pulse.JobLease = TimeSpan.FromMilliseconds(10)));
+    }
+
+    [Fact]
     public void RequiresAStore()
     {
         var exception = Assert.Throws<InvalidOperationException>(

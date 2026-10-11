@@ -23,6 +23,20 @@ public sealed class ScanningTests
 
         var handlerNames = (await host.Control.GetCursors()).Select(cursor => cursor.HandlerName).ToList();
         Assert.Equal(["ScannedRefunds", "scanned-receipts"], handlerNames);
+
+        await host.Pulse.Enqueue(new ScannedJob("nightly"));
+        await Eventually.True(() => recorder.Items.Contains("job:nightly"), "the scanned job handler runs the job");
+    }
+}
+
+public sealed record ScannedJob(string Name);
+
+public sealed class ScannedJobHandler(ScanRecorder recorder) : IJobHandler<ScannedJob>
+{
+    public Task Handle(ScannedJob job, JobContext context, CancellationToken cancellationToken)
+    {
+        recorder.Items.Enqueue($"job:{job.Name}");
+        return Task.CompletedTask;
     }
 }
 

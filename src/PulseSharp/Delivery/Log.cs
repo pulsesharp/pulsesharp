@@ -40,4 +40,33 @@ internal static partial class Log
         Message = "Handler {HandlerName} hit an unexpected error while reading events. It will try again."
     )]
     public static partial void RunnerError(ILogger logger, Exception exception, string handlerName);
+
+    [LoggerMessage(
+        EventId = 2001,
+        Level = LogLevel.Warning,
+        Message = "Job {JobName} {JobId} failed (attempt {Attempt} of {MaxAttempts}). Retrying at {RetryAt}."
+    )]
+    public static partial void JobWillRetry(
+        ILogger logger,
+        Exception exception,
+        string jobName,
+        Guid jobId,
+        int attempt,
+        int maxAttempts,
+        DateTimeOffset retryAt
+    );
+
+    [LoggerMessage(
+        EventId = 2002,
+        Level = LogLevel.Error,
+        Message = "Job {JobName} {JobId} failed after {Attempts} attempts. Use IPulseControl.RetryJob to run it again."
+    )]
+    public static partial void JobFailed(ILogger logger, Exception exception, string jobName, Guid jobId, int attempts);
+
+    [LoggerMessage(
+        EventId = 2003,
+        Level = LogLevel.Error,
+        Message = "The job runner hit an unexpected error. It will try again."
+    )]
+    public static partial void JobRunnerError(ILogger logger, Exception exception);
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using PulseSharp;
 using PulseSharp.Control;
 using PulseSharp.Delivery;
+using PulseSharp.Naming;
 using PulseSharp.Stores;
 
 namespace Microsoft.Extensions.DependencyInjection;
@@ -51,7 +52,7 @@ public static class PulseSharpServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton(settings);
-        services.AddSingleton(builder.EventNames);
+        services.AddSingleton(new PulseNames(builder.EventNames, builder.JobNames));
         services.AddSingleton(store);
         services.AddSingleton<WakeUpSignal>();
         services.AddSingleton<ControlRequests>();

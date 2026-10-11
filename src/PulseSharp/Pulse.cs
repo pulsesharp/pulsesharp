@@ -6,7 +6,7 @@ namespace PulseSharp;
 
 internal sealed class Pulse(
     IPulseStore store,
-    EventNames eventNames,
+    PulseNames names,
     WakeUpSignal signal,
     PulseSharpSettings settings,
     TimeProvider time
@@ -43,7 +43,7 @@ internal sealed class Pulse(
         var newEvent = new NewEvent(
             EventIds.NewVersion7(now),
             streamName,
-            eventNames.NameOf(@event.GetType()),
+            names.Events.NameOf(@event.GetType()),
             @event,
             settings.Node,
             now
@@ -60,9 +60,18 @@ internal sealed class Pulse(
         return Enqueue(job, DefaultEnqueueOptions, cancellationToken);
     }
 
-    public Task<Guid> Enqueue<TJob>(TJob job, EnqueueOptions options, CancellationToken cancellationToken = default)
+    public async Task<Guid> Enqueue<TJob>(TJob job, EnqueueOptions options, CancellationToken cancellationToken = default)
         where TJob : notnull
     {
-        throw new NotSupportedException("Jobs arrive in PulseSharp 0.2. This preview delivers events only.");
+        ArgumentNullException.ThrowIfNull(job);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var now = time.GetUtcNow();
+        var runAt = options.RunAt is { } requested && requested > now ? requested : now;
+        var newJob = new NewJob(EventIds.NewVersion7(now), names.Jobs.NameOf(job.GetType()), job, now, runAt);
+
+        var stored = await store.AddJob(newJob, cancellationToken).ConfigureAwait(false);
+        signal.Notify();
+        return stored.Id;
     }
 }

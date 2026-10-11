@@ -6,6 +6,8 @@ internal sealed class InMemoryStore : IPulseStore
     private readonly List<StoredEvent> _events = [];
     private readonly Dictionary<string, long> _streamPositions = new(StringComparer.Ordinal);
     private readonly Dictionary<(string HandlerName, string Stream), Cursor> _cursors = [];
+    private readonly Dictionary<Guid, StoredJob> _jobs = [];
+    private readonly Dictionary<Guid, long> _jobOrder = [];
 
     public Task<StoredEvent> Append(NewEvent newEvent, ExpectedVersion expectedVersion, CancellationToken cancellationToken)
     {
@@ -74,6 +76,220 @@ internal sealed class InMemoryStore : IPulseStore
         }
 
         return Task.CompletedTask;
+    }
+
+    public Task<StoredJob> AddJob(NewJob newJob, CancellationToken cancellationToken)
+    {
+        var job = new StoredJob(
+            Id: newJob.JobId,
+            JobName: newJob.JobName,
+            Data: newJob.Data,
+            State: JobState.Pending,
+            Attempts: 0,
+            Done: 0,
+            Total: 0,
+            LastError: null,
+            EnqueuedAt: newJob.EnqueuedAt,
+            RunAt: newJob.RunAt,
+            StartedAt: null,
+            FinishedAt: null,
+            LeaseOwner: null,
+            LeaseUntil: null,
+            CancelRequested: false
+        );
+
+        lock (_gate)
+        {
+            _jobs.Add(job.Id, job);
+            _jobOrder.Add(job.Id, _jobOrder.Count);
+        }
+
+        return Task.FromResult(job);
+    }
+
+    public Task<StoredJob?> ClaimNextJob(
+        IReadOnlySet<string> jobNames,
+        string workerId,
+        DateTimeOffset now,
+        TimeSpan lease,
+        CancellationToken cancellationToken
+    )
+    {
+        lock (_gate)
+        {
+            var next = _jobs.Values
+                .Where(job => jobNames.Contains(job.JobName) && job.IsClaimableAt(now))
+                .OrderBy(job => job.RunAt)
+                .ThenBy(job => _jobOrder[job.Id])
+                .FirstOrDefault();
+
+            if (next is null)
+            {
+                return Task.FromResult<StoredJob?>(null);
+            }
+
+            var claimed = next with
+            {
+                State = JobState.Running,
+                Attempts = next.Attempts + 1,
+                StartedAt = now,
+                LeaseOwner = workerId,
+                LeaseUntil = now + lease
+            };
+
+            _jobs[claimed.Id] = claimed;
+            return Task.FromResult<StoredJob?>(claimed);
+        }
+    }
+
+    public Task<LeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(jobId, out var job) || !job.IsHeldBy(workerId))
+            {
+                return Task.FromResult(new LeaseStatus(Held: false, CancelRequested: false));
+            }
+
+            _jobs[jobId] = job with { LeaseUntil = leaseUntil };
+            return Task.FromResult(new LeaseStatus(Held: true, CancelRequested: job.CancelRequested));
+        }
+    }
+
+    public Task SaveProgress(Guid jobId, string workerId, int done, int total, CancellationToken cancellationToken)
+    {
+        return UpdateHeldJob(jobId, workerId, job => job with { Done = done, Total = total });
+    }
+
+    public Task CompleteJob(Guid jobId, string workerId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        return UpdateHeldJob(jobId, workerId, job => Finished(job, JobState.Succeeded, now));
+    }
+
+    public Task FailJobAttempt(
+        Guid jobId,
+        string workerId,
+        string error,
+        DateTimeOffset? retryAt,
+        DateTimeOffset now,
+        CancellationToken cancellationToken
+    )
+    {
+        return UpdateHeldJob(jobId, workerId, job => retryAt is { } nextRun
+            ? job with { State = JobState.Retrying, RunAt = nextRun, LastError = error, LeaseOwner = null, LeaseUntil = null }
+            : Finished(job, JobState.Failed, now) with { LastError = error });
+    }
+
+    public Task CancelRunningJob(Guid jobId, string workerId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        return UpdateHeldJob(jobId, workerId, job => Finished(job, JobState.Canceled, now));
+    }
+
+    public Task ReleaseJob(Guid jobId, string workerId, CancellationToken cancellationToken)
+    {
+        return UpdateHeldJob(jobId, workerId, job => job with
+        {
+            State = job.Attempts > 1 ? JobState.Retrying : JobState.Pending,
+            Attempts = job.Attempts - 1,
+            LeaseOwner = null,
+            LeaseUntil = null
+        });
+    }
+
+    public Task<StoredJob?> GetJob(Guid jobId, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult(_jobs.GetValueOrDefault(jobId));
+        }
+    }
+
+    public Task<IReadOnlyList<StoredJob>> GetJobs(JobState? state, int limit, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            IReadOnlyList<StoredJob> jobs = _jobs.Values
+                .Where(job => state is null || job.State == state)
+                .OrderByDescending(job => _jobOrder[job.Id])
+                .Take(limit)
+                .ToList();
+            return Task.FromResult(jobs);
+        }
+    }
+
+    public Task<bool> RequestCancel(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(jobId, out var job))
+            {
+                return Task.FromResult(false);
+            }
+
+            if (job.State is JobState.Pending or JobState.Retrying)
+            {
+                _jobs[jobId] = Finished(job, JobState.Canceled, now);
+                return Task.FromResult(true);
+            }
+
+            if (job.State == JobState.Running)
+            {
+                _jobs[jobId] = job with { CancelRequested = true };
+                return Task.FromResult(true);
+            }
+
+            return Task.FromResult(false);
+        }
+    }
+
+    public Task<bool> RetryJob(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(jobId, out var job) || job.State is not (JobState.Failed or JobState.Canceled))
+            {
+                return Task.FromResult(false);
+            }
+
+            _jobs[jobId] = job with
+            {
+                State = JobState.Pending,
+                Attempts = 0,
+                Done = 0,
+                Total = 0,
+                LastError = null,
+                RunAt = now,
+                StartedAt = null,
+                FinishedAt = null,
+                CancelRequested = false
+            };
+            return Task.FromResult(true);
+        }
+    }
+
+    private Task UpdateHeldJob(Guid jobId, string workerId, Func<StoredJob, StoredJob> update)
+    {
+        lock (_gate)
+        {
+            if (_jobs.TryGetValue(jobId, out var job) && job.IsHeldBy(workerId))
+            {
+                _jobs[jobId] = update(job);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static StoredJob Finished(StoredJob job, JobState state, DateTimeOffset now)
+    {
+        return job with
+        {
+            State = state,
+            FinishedAt = now,
+            LeaseOwner = null,
+            LeaseUntil = null,
+            CancelRequested = false
+        };
     }
 
     private static bool Matches(ExpectedVersion expectedVersion, long currentPosition)

@@ -3,6 +3,7 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PulseSharp.Delivery;
+using PulseSharp.Jobs;
 using PulseSharp.Naming;
 using PulseSharp.Stores;
 
@@ -15,10 +16,12 @@ namespace PulseSharp;
 public sealed class PulseSharpBuilder
 {
     private const string ReflectionMessage =
-        "Finds the handled event types with reflection. With trimming or Native AOT, use AddHandler<TEvent, THandler>() instead.";
+        "Finds the handled event and job types with reflection. With trimming or Native AOT, " +
+        "use AddHandler<TEvent, THandler>() and AddJobHandler<TJob, THandler>() instead.";
 
     private readonly IServiceCollection _services;
     private readonly Dictionary<string, Subscription> _subscriptions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, JobRegistration> _jobs = new(StringComparer.Ordinal);
     private Func<IPulseStore>? _createStore;
 
     internal PulseSharpBuilder(IServiceCollection services)
@@ -53,7 +56,20 @@ public sealed class PulseSharpBuilder
     /// </summary>
     public int MaxParallelStreams { get; set; } = 4;
 
-    internal EventNames EventNames { get; } = new();
+    /// <summary>
+    /// How many jobs this app instance runs at the same time. The default is 4.
+    /// </summary>
+    public int MaxParallelJobs { get; set; } = 4;
+
+    /// <summary>
+    /// How long a running job stays claimed without a heartbeat. The runner renews the claim every poll interval;
+    /// when an app instance stops unexpectedly, its jobs are picked up again after this time. The default is 5 minutes.
+    /// </summary>
+    public TimeSpan JobLease { get; set; } = TimeSpan.FromMinutes(5);
+
+    internal TypeNames EventNames { get; } = TypeNames.ForEvents();
+
+    internal TypeNames JobNames { get; } = TypeNames.ForJobs();
 
     /// <summary>
     /// Keeps events in memory. Everything is lost when the app stops: use it for tests and samples.
@@ -114,35 +130,73 @@ public sealed class PulseSharpBuilder
     }
 
     /// <summary>
-    /// Adds a handler class for every <see cref="IEventHandler{TEvent}"/> it implements.
+    /// Adds an inline handler for jobs of type <typeparamref name="TJob"/>. A job type has exactly one handler.
+    /// </summary>
+    /// <typeparam name="TJob">The job type. Its stored name is the class name, or the name in <see cref="JobNameAttribute"/>.</typeparam>
+    /// <param name="handler">The code that runs one job.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TJob"/> already has a handler.</exception>
+    public PulseSharpBuilder OnJob<TJob>(Func<TJob, JobContext, CancellationToken, Task> handler)
+        where TJob : notnull
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+
+        AddJob(
+            typeof(TJob),
+            handler,
+            (_, job, context, cancellationToken) => handler((TJob)job, context, cancellationToken)
+        );
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a handler class for jobs of type <typeparamref name="TJob"/>. A new instance is created from dependency
+    /// injection for every job. Works with trimming and Native AOT.
+    /// </summary>
+    /// <typeparam name="TJob">The job type. Its stored name is the class name, or the name in <see cref="JobNameAttribute"/>.</typeparam>
+    /// <typeparam name="THandler">The handler class.</typeparam>
+    /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TJob"/> already has another handler.</exception>
+    public PulseSharpBuilder AddJobHandler<TJob, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] THandler>()
+        where TJob : notnull
+        where THandler : class, IJobHandler<TJob>
+    {
+        _services.TryAddTransient<THandler>();
+        AddJob(typeof(TJob), typeof(THandler), InvokeJobHandlerClass<TJob, THandler>);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a handler class for every <see cref="IEventHandler{TEvent}"/> and <see cref="IJobHandler{TJob}"/> it implements.
     /// </summary>
     /// <typeparam name="THandler">The handler class. Its stable name is the class name, or the name in <see cref="HandlerNameAttribute"/>.</typeparam>
     /// <returns>This builder.</returns>
     /// <exception cref="InvalidOperationException">
-    /// <typeparamref name="THandler"/> implements no <see cref="IEventHandler{TEvent}"/>, or another handler already uses the same name.
+    /// <typeparamref name="THandler"/> implements neither interface, another handler already uses the same name,
+    /// or a job type already has another handler.
     /// </exception>
     [RequiresDynamicCode(ReflectionMessage)]
     [RequiresUnreferencedCode(ReflectionMessage)]
     public PulseSharpBuilder AddHandler<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.Interfaces)] THandler>()
         where THandler : class
     {
-        var eventTypes = HandledEventTypes(typeof(THandler));
-        if (eventTypes.Count == 0)
+        if (!AddHandlerClass(typeof(THandler)))
         {
-            throw new InvalidOperationException($"{typeof(THandler).FullName} does not implement IEventHandler<TEvent>.");
+            throw new InvalidOperationException(
+                $"{typeof(THandler).FullName} implements neither IEventHandler<TEvent> nor IJobHandler<TJob>."
+            );
         }
 
-        AddHandlerType(typeof(THandler), eventTypes);
         return this;
     }
 
     /// <summary>
     /// Adds every handler class in an assembly: each public or internal, non-abstract class that implements
-    /// <see cref="IEventHandler{TEvent}"/>.
+    /// <see cref="IEventHandler{TEvent}"/> or <see cref="IJobHandler{TJob}"/>.
     /// </summary>
     /// <param name="assembly">The assembly to scan, for example <c>typeof(Program).Assembly</c>.</param>
     /// <returns>This builder.</returns>
-    /// <exception cref="InvalidOperationException">Two handlers share a name.</exception>
+    /// <exception cref="InvalidOperationException">Two handlers share a name, or a job type has two handlers.</exception>
     [RequiresDynamicCode(ReflectionMessage)]
     [RequiresUnreferencedCode(ReflectionMessage)]
     public PulseSharpBuilder AddHandlersFromAssembly(Assembly assembly)
@@ -157,11 +211,7 @@ public sealed class PulseSharpBuilder
 
         foreach (var handlerType in handlerTypes)
         {
-            var eventTypes = HandledEventTypes(handlerType);
-            if (eventTypes.Count > 0)
-            {
-                AddHandlerType(handlerType, eventTypes);
-            }
+            AddHandlerClass(handlerType);
         }
 
         return this;
@@ -184,9 +234,14 @@ public sealed class PulseSharpBuilder
             throw new InvalidOperationException("PulseSharp: RetryDelay and PollInterval must be greater than zero.");
         }
 
-        if (MaxParallelStreams < 1)
+        if (MaxParallelStreams < 1 || MaxParallelJobs < 1)
         {
-            throw new InvalidOperationException("PulseSharp: MaxParallelStreams must be at least 1.");
+            throw new InvalidOperationException("PulseSharp: MaxParallelStreams and MaxParallelJobs must be at least 1.");
+        }
+
+        if (JobLease <= PollInterval)
+        {
+            throw new InvalidOperationException("PulseSharp: JobLease must be longer than PollInterval.");
         }
 
         return new PulseSharpSettings(
@@ -195,7 +250,10 @@ public sealed class PulseSharpBuilder
             RetryDelay,
             PollInterval,
             MaxParallelStreams,
-            _subscriptions.Values.ToList()
+            MaxParallelJobs,
+            JobLease,
+            _subscriptions.Values.ToList(),
+            new Dictionary<string, JobRegistration>(_jobs, StringComparer.Ordinal)
         );
     }
 
@@ -211,12 +269,66 @@ public sealed class PulseSharpBuilder
 
     [RequiresDynamicCode(ReflectionMessage)]
     [RequiresUnreferencedCode(ReflectionMessage)]
-    private void AddHandlerType(Type handlerType, IReadOnlyList<Type> eventTypes)
+    private bool AddHandlerClass(Type handlerType)
     {
+        var eventTypes = HandledTypes(handlerType, typeof(IEventHandler<>));
+        var jobTypes = HandledTypes(handlerType, typeof(IJobHandler<>));
+
         var addHandler = typeof(PulseSharpBuilder).GetMethod(nameof(AddHandlerFor), BindingFlags.NonPublic | BindingFlags.Instance)!;
         foreach (var eventType in eventTypes)
         {
             addHandler.MakeGenericMethod(eventType, handlerType).Invoke(this, null);
+        }
+
+        var addJobHandler = typeof(PulseSharpBuilder).GetMethod(nameof(AddJobHandlerFor), BindingFlags.NonPublic | BindingFlags.Instance)!;
+        foreach (var jobType in jobTypes)
+        {
+            addJobHandler.MakeGenericMethod(jobType, handlerType).Invoke(this, null);
+        }
+
+        return eventTypes.Count + jobTypes.Count > 0;
+    }
+
+    private void AddJobHandlerFor<TJob, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] THandler>()
+        where TJob : notnull
+        where THandler : class, IJobHandler<TJob>
+    {
+        AddJobHandler<TJob, THandler>();
+    }
+
+    private void AddJob(Type jobType, object source, JobInvoker invoker)
+    {
+        var jobName = JobNames.NameOf(jobType);
+
+        if (_jobs.TryGetValue(jobName, out var existing))
+        {
+            if (Equals(existing.Source, source))
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"The job '{jobName}' already has a handler. A job type has exactly one handler."
+            );
+        }
+
+        _jobs.Add(jobName, new JobRegistration(jobName, source, invoker));
+    }
+
+    private static async Task InvokeJobHandlerClass<TJob, THandler>(
+        IServiceProvider services,
+        object job,
+        JobContext context,
+        CancellationToken cancellationToken
+    )
+        where TJob : notnull
+        where THandler : class, IJobHandler<TJob>
+    {
+        var scope = services.CreateAsyncScope();
+        await using (scope.ConfigureAwait(false))
+        {
+            var handler = scope.ServiceProvider.GetRequiredService<THandler>();
+            await handler.Handle((TJob)job, context, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -226,11 +338,11 @@ public sealed class PulseSharpBuilder
     }
 
     [RequiresUnreferencedCode(ReflectionMessage)]
-    private static List<Type> HandledEventTypes(Type handlerType)
+    private static List<Type> HandledTypes(Type handlerType, Type openHandlerInterface)
     {
         return handlerType
             .GetInterfaces()
-            .Where(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEventHandler<>))
+            .Where(type => type.IsGenericType && type.GetGenericTypeDefinition() == openHandlerInterface)
             .Select(type => type.GetGenericArguments()[0])
             .ToList();
     }

@@ -83,16 +83,4 @@ public sealed class EmitTests
             () => host.Pulse.Emit(new BlankStream(), new SaleCompleted(1))
         );
     }
-
-    [Fact]
-    public async Task EnqueueExplainsThatJobsAreNotAvailableYet()
-    {
-        await using var host = await TestHost.Start(_ => { });
-
-        var exception = await Assert.ThrowsAsync<NotSupportedException>(
-            () => host.Pulse.Enqueue(new SaleCompleted(1))
-        );
-
-        Assert.Contains("0.2", exception.Message, StringComparison.Ordinal);
-    }
 }
