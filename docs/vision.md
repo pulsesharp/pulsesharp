@@ -20,8 +20,9 @@ PulseSharp gives you **one small programming model** for events and jobs that wo
 - in tests, in memory.
 
 ```csharp
+pulse.On<SaleCompleted>("print-receipt", async (sale, context, ct) => await PrintReceipt(sale, ct));
+
 await pulse.Emit(new SaleStream(id), new SaleCompleted(id, total));
-pulse.On<SaleCompleted>(async (sale, ct) => await PrintReceipt(sale, ct));
 ```
 
 Write a handler once and run it on any of them.

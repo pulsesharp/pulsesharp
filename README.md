@@ -9,7 +9,7 @@
 
 ---
 
-> **Status: early development.** Nothing is published yet. The API below is the design target and may change before `1.0`.
+> **Status: preview (`0.0.1-alpha`).** Events work with the in-memory store. Jobs, SQLite, PostgreSQL and sync are coming (see the [roadmap](docs/vision.md#roadmap)). The API may change before `1.0`.
 
 ## What is PulseSharp?
 
@@ -22,16 +22,33 @@ It works the same way in a **desktop app, a web app, a worker service or a conso
 
 ## A quick look
 
-```csharp
-services.AddPulseSharp(pulse => pulse.UseSqlite("Data Source=app.db"));
+```bash
+dotnet add package PulseSharp --prerelease
+```
 
-// Something happened
+```csharp
+public sealed record SaleCompleted(Guid SaleId, decimal Total);
+
+public sealed record SaleStream(Guid SaleId) : StreamName
+{
+    public override string Value()
+    {
+        return $"Sale-{SaleId}";
+    }
+}
+
+// Setup: choose a store and add handlers. Every handler has a stable name.
+builder.Services.AddPulseSharp(pulse =>
+{
+    pulse.UseInMemory();
+    pulse.On<SaleCompleted>("print-receipt", async (sale, context, ct) => await PrintReceipt(sale, ct));
+    pulse.AddHandler<SaleCompleted, UpdateStock>();
+});
+
+// Something happened: emit it from anywhere through IPulse
 await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total));
 
-// React to it: inline…
-pulse.On<SaleCompleted>(async (sale, ct) => await PrintReceipt(sale, ct));
-
-// …or in a handler class
+// A handler class, created through dependency injection for every event
 public sealed class UpdateStock(IStock stock) : IEventHandler<SaleCompleted>
 {
     public async Task Handle(SaleCompleted sale, EventContext context, CancellationToken ct)
@@ -39,10 +56,17 @@ public sealed class UpdateStock(IStock stock) : IEventHandler<SaleCompleted>
         await stock.Decrease(sale.SaleId, ct);
     }
 }
-
-// Work to do
-await pulse.Enqueue(new ImportProducts("products.csv"));
 ```
+
+PulseSharp runs as a hosted service, so it works in any app that uses the .NET Generic Host: web apps, worker services, and desktop apps that build a host.
+
+## What you get today
+
+- Events of one stream reach each handler **in order**. Different streams and different handlers are independent.
+- A failing handler is **retried** with a growing delay. After `MaxAttempts` its stream stops **for that handler only**, and everything else keeps flowing.
+- **Stable names**: duplicate handler names or event names stop the app at startup with a clear message.
+- **Optimistic concurrency** with `EmitOptions.ExpectedVersion`.
+- Every event gets a time-ordered, globally unique id (UUIDv7) and records the node that emitted it.
 
 ## Why PulseSharp?
 
@@ -52,16 +76,18 @@ await pulse.Enqueue(new ImportProducts("products.csv"));
 - **Device to cloud.** Events are saved on the device and keep working offline. They sync to the server when the device is back online.
 - **Honest guarantees.** Delivery is at-least-once, and every handler sees each stream in order. The docs say exactly what is guaranteed and what is not.
 
-## Packages (planned)
+## Packages
 
-| Package | What it adds |
-|---|---|
-| `PulseSharp.Abstractions` | Contracts for handlers and libraries. No dependencies. |
-| `PulseSharp` | The engine, with an in-memory store built in |
-| `PulseSharp.Sqlite` | SQLite store, for desktop and mobile apps |
-| `PulseSharp.PostgreSql` | PostgreSQL store, for servers |
-| `PulseSharp.Sync` | Device ↔ cloud sync |
-| `PulseSharp.Monitor` | Optional web UI |
+| Package | What it adds | Status |
+|---|---|---|
+| `PulseSharp.Abstractions` | Contracts for handlers and libraries. No dependencies. | Preview |
+| `PulseSharp` | The engine, with an in-memory store built in | Preview |
+| `PulseSharp.Sqlite` | SQLite store, for desktop and mobile apps | Planned (0.3) |
+| `PulseSharp.PostgreSql` | PostgreSQL store, for servers | Planned (0.4) |
+| `PulseSharp.Sync` | Device ↔ cloud sync | Planned (0.5) |
+| `PulseSharp.Monitor` | Optional web UI | Planned (0.6) |
+
+Jobs (`IPulse.Enqueue`) arrive in 0.2. In this preview, `Enqueue` throws `NotSupportedException`.
 
 ## Learn more
 

@@ -9,7 +9,7 @@
 | **Event** | A plain C# record that describes something that happened. No base class and no marker interface. |
 | **Stream** | A named, ordered list of events, such as `Sale-7f3a…` or `Homepage-2026-10-10`. Order is guaranteed inside a stream. |
 | **Emit** | Saving an event to a stream: `pulse.Emit(stream, event)`. |
-| **Handler** | Code that reacts to an event: `pulse.On<T>(…)` or a class that implements `IEventHandler<T>`. Each handler has a stable name. |
+| **Handler** | Code that reacts to an event: `On<T>("name", …)` at setup, or a class that implements `IEventHandler<T>`. Each handler has a stable name. |
 | **Cursor** | How far a handler has got in one stream. One cursor exists per handler and per stream. |
 | **Job** | A plain C# record that describes work to do, handled by exactly one `IJobHandler<T>`. |
 | **Store** | The package that keeps events, cursors and jobs in a database. |
@@ -88,7 +88,7 @@ Saving your data and emitting the event must succeed or fail together:
 ```csharp
 await using var tx = await connection.BeginTransactionAsync(ct);
 await SaveSale(connection, tx, sale, ct);
-await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total), ct, transaction: tx);
+await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total), new EmitOptions { Transaction = tx }, ct);
 await tx.CommitAsync(ct);
 ```
 
