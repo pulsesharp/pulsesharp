@@ -9,7 +9,7 @@
 
 ---
 
-> **Status: preview (`0.0.1-alpha`).** Events work with the in-memory store. Jobs, SQLite, PostgreSQL and sync are coming (see the [roadmap](docs/vision.md#roadmap)). The API may change before `1.0`.
+> **Status: preview (`0.1`).** Events work with the in-memory store. Jobs, SQLite, PostgreSQL and sync are coming (see the [roadmap](docs/vision.md#roadmap)). The API may change before `1.0`.
 
 ## What is PulseSharp?
 
@@ -67,6 +67,23 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - **Stable names**: duplicate handler names or event names stop the app at startup with a clear message.
 - **Optimistic concurrency** with `EmitOptions.ExpectedVersion`.
 - Every event gets a time-ordered, globally unique id (UUIDv7) and records the node that emitted it.
+- **Several streams in parallel** per handler (`MaxParallelStreams`, default 4), still in order within each stream.
+- **`IPulseControl`**: list the cursors of every handler, **retry** or **skip** a failed event, or **rewind** a handler to handle everything again.
+- **Handler discovery**: `pulse.AddHandlersFromAssembly(typeof(Program).Assembly)`, or explicit `AddHandler<TEvent, THandler>()` for trimming and Native AOT.
+
+See [`samples/ConsoleSample`](samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them.
+
+## Performance
+
+In-memory store, one machine, BenchmarkDotNet short run ([`benchmarks/`](benchmarks/PulseSharp.Benchmarks/EventBenchmarks.cs)):
+
+| Per event | Time | Allocated |
+|---|---|---|
+| Emit (no handlers) | ~0.5 µs | 542 B |
+| Emit + deliver to 1 handler | ~2.2 µs | 1.0 KB |
+| Emit + deliver to 3 handlers | ~5.6 µs | 1.9 KB |
+
+Numbers for the SQLite and PostgreSQL stores will follow with those stores.
 
 ## Why PulseSharp?
 

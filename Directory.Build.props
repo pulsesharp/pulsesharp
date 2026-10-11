@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Package">
-    <VersionPrefix>0.0.1</VersionPrefix>
+    <VersionPrefix>0.1.0</VersionPrefix>
     <VersionSuffix>dev</VersionSuffix>
     <Authors>Waqas Ahmad</Authors>
     <Company>PulseSharp</Company>
