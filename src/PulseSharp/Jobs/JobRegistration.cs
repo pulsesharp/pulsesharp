@@ -2,7 +2,7 @@ namespace PulseSharp.Jobs;
 
 internal delegate Task JobInvoker(
     IServiceProvider services,
-    object job,
+    byte[] data,
     JobContext context,
     CancellationToken cancellationToken
 );

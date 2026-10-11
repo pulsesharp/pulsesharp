@@ -16,6 +16,12 @@ internal sealed class PulseSharpHostedService(
     ILoggerFactory loggerFactory
 ) : BackgroundService
 {
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await store.Initialize(cancellationToken).ConfigureAwait(false);
+        await base.StartAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var logger = loggerFactory.CreateLogger("PulseSharp");

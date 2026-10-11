@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>PulseSharp.Sqlite</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>SQLite store for PulseSharp: durable events and jobs for desktop, mobile and small server apps. Depends only on Microsoft.Data.Sqlite.</Description>
+    <PackageTags>$(PackageTags);sqlite;offline-first;desktop</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PulseSharp\PulseSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PulseSharp.Tests" />
+  </ItemGroup>
+
+</Project>

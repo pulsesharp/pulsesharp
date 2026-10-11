@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PulseSharp\PulseSharp.csproj" />
+    <ProjectReference Include="..\..\src\PulseSharp.Sqlite\PulseSharp.Sqlite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

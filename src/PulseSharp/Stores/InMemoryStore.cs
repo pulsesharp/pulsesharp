@@ -1,3 +1,5 @@
+using System.Data.Common;
+
 namespace PulseSharp.Stores;
 
 internal sealed class InMemoryStore : IPulseStore
@@ -5,16 +7,26 @@ internal sealed class InMemoryStore : IPulseStore
     private readonly object _gate = new();
     private readonly List<StoredEvent> _events = [];
     private readonly Dictionary<string, long> _streamPositions = new(StringComparer.Ordinal);
-    private readonly Dictionary<(string HandlerName, string Stream), Cursor> _cursors = [];
+    private readonly Dictionary<(string HandlerName, string Stream), HandlerCursor> _cursors = [];
     private readonly Dictionary<Guid, StoredJob> _jobs = [];
     private readonly Dictionary<Guid, long> _jobOrder = [];
 
-    public Task<StoredEvent> Append(NewEvent newEvent, ExpectedVersion expectedVersion, CancellationToken cancellationToken)
+    public Task Initialize(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task<StoredEvent> Append(
+        NewEvent newEvent,
+        ExpectedVersion expectedVersion,
+        DbTransaction? transaction,
+        CancellationToken cancellationToken
+    )
     {
         lock (_gate)
         {
             _streamPositions.TryGetValue(newEvent.Stream, out var currentPosition);
-            if (!Matches(expectedVersion, currentPosition))
+            if (!expectedVersion.Allows(currentPosition))
             {
                 throw new ExpectedVersionMismatchException(newEvent.Stream, expectedVersion, currentPosition);
             }
@@ -59,16 +71,16 @@ internal sealed class InMemoryStore : IPulseStore
         return Task.FromResult<IReadOnlyList<StoredEvent>>(found);
     }
 
-    public Task<IReadOnlyList<Cursor>> LoadCursors(string handlerName, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<HandlerCursor>> LoadCursors(string handlerName, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
-            IReadOnlyList<Cursor> cursors = _cursors.Values.Where(cursor => cursor.HandlerName == handlerName).ToList();
+            IReadOnlyList<HandlerCursor> cursors = _cursors.Values.Where(cursor => cursor.HandlerName == handlerName).ToList();
             return Task.FromResult(cursors);
         }
     }
 
-    public Task SaveCursor(Cursor cursor, CancellationToken cancellationToken)
+    public Task SaveCursor(HandlerCursor cursor, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
@@ -78,7 +90,7 @@ internal sealed class InMemoryStore : IPulseStore
         return Task.CompletedTask;
     }
 
-    public Task<StoredJob> AddJob(NewJob newJob, CancellationToken cancellationToken)
+    public Task<StoredJob> AddJob(NewJob newJob, DbTransaction? transaction, CancellationToken cancellationToken)
     {
         var job = new StoredJob(
             Id: newJob.JobId,
@@ -289,17 +301,6 @@ internal sealed class InMemoryStore : IPulseStore
             LeaseOwner = null,
             LeaseUntil = null,
             CancelRequested = false
-        };
-    }
-
-    private static bool Matches(ExpectedVersion expectedVersion, long currentPosition)
-    {
-        return expectedVersion.Kind switch
-        {
-            ExpectedVersionKind.NoStream => currentPosition == 0,
-            ExpectedVersionKind.StreamExists => currentPosition > 0,
-            ExpectedVersionKind.Exactly => currentPosition == expectedVersion.Position,
-            _ => true
         };
     }
 }

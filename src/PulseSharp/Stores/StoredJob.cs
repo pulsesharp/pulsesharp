@@ -1,11 +1,37 @@
 namespace PulseSharp.Stores;
 
-internal sealed record NewJob(Guid JobId, string JobName, object Data, DateTimeOffset EnqueuedAt, DateTimeOffset RunAt);
+/// <summary>
+/// A job to save. The engine has already serialized its data.
+/// </summary>
+/// <param name="JobId">The globally unique id of the job (UUIDv7).</param>
+/// <param name="JobName">The stored name of the job type.</param>
+/// <param name="Data">The serialized job (UTF-8 JSON).</param>
+/// <param name="EnqueuedAt">When the job was enqueued.</param>
+/// <param name="RunAt">The earliest time the job may run.</param>
+public sealed record NewJob(Guid JobId, string JobName, byte[] Data, DateTimeOffset EnqueuedAt, DateTimeOffset RunAt);
 
-internal sealed record StoredJob(
+/// <summary>
+/// A saved job, with its state and lease.
+/// </summary>
+/// <param name="Id">The job id.</param>
+/// <param name="JobName">The stored name of the job type.</param>
+/// <param name="Data">The serialized job (UTF-8 JSON).</param>
+/// <param name="State">The state.</param>
+/// <param name="Attempts">How many times the job has been claimed.</param>
+/// <param name="Done">Reported progress: items finished.</param>
+/// <param name="Total">Reported progress: items in total.</param>
+/// <param name="LastError">The error of the last failed attempt.</param>
+/// <param name="EnqueuedAt">When the job was enqueued.</param>
+/// <param name="RunAt">The earliest time the job runs, or runs again.</param>
+/// <param name="StartedAt">When the latest attempt started.</param>
+/// <param name="FinishedAt">When the job reached a final state.</param>
+/// <param name="LeaseOwner">The worker holding the job while it runs.</param>
+/// <param name="LeaseUntil">When the lease ends unless renewed.</param>
+/// <param name="CancelRequested">Whether a cancel was requested while the job runs.</param>
+public sealed record StoredJob(
     Guid Id,
     string JobName,
-    object Data,
+    byte[] Data,
     JobState State,
     int Attempts,
     int Done,
@@ -20,6 +46,11 @@ internal sealed record StoredJob(
     bool CancelRequested
 )
 {
+    /// <summary>
+    /// Whether the job can be claimed at <paramref name="now"/>: due and waiting, or running with an expired lease.
+    /// </summary>
+    /// <param name="now">The current time.</param>
+    /// <returns><see langword="true"/> when the job can be claimed.</returns>
     public bool IsClaimableAt(DateTimeOffset now)
     {
         var isDue = State is JobState.Pending or JobState.Retrying && RunAt <= now;
@@ -27,15 +58,25 @@ internal sealed record StoredJob(
         return isDue || isAbandoned;
     }
 
+    /// <summary>
+    /// Whether <paramref name="workerId"/> holds the job while it runs.
+    /// </summary>
+    /// <param name="workerId">The worker.</param>
+    /// <returns><see langword="true"/> when the job is running and leased by the worker.</returns>
     public bool IsHeldBy(string workerId)
     {
         return State == JobState.Running && LeaseOwner == workerId;
     }
 
-    public JobInfo ToJobInfo()
+    internal JobInfo ToJobInfo()
     {
         return new JobInfo(Id, JobName, State, Attempts, Done, Total, LastError, EnqueuedAt, RunAt, StartedAt, FinishedAt);
     }
 }
 
-internal readonly record struct LeaseStatus(bool Held, bool CancelRequested);
+/// <summary>
+/// The answer to a lease renewal.
+/// </summary>
+/// <param name="Held">Whether the worker still holds the lease.</param>
+/// <param name="CancelRequested">Whether a cancel was requested for the job.</param>
+public readonly record struct LeaseStatus(bool Held, bool CancelRequested);

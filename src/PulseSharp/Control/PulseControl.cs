@@ -50,7 +50,7 @@ internal sealed class PulseControl(
         foreach (var name in handlerNames)
         {
             var stored = await store.LoadCursors(name, cancellationToken).ConfigureAwait(false);
-            cursors.AddRange(stored.Select(ToHandlerCursor));
+            cursors.AddRange(stored);
         }
 
         return cursors
@@ -92,18 +92,5 @@ internal sealed class PulseControl(
         }
 
         return handlerName;
-    }
-
-    private static HandlerCursor ToHandlerCursor(Cursor cursor)
-    {
-        return new HandlerCursor(
-            cursor.HandlerName,
-            cursor.Stream,
-            cursor.Position,
-            cursor.Status,
-            cursor.Attempts,
-            cursor.LastError,
-            cursor.RetryAt
-        );
     }
 }

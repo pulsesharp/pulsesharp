@@ -67,6 +67,14 @@ public sealed class PulseSharpBuilder
     /// </summary>
     public TimeSpan JobLease { get; set; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// The JSON options used to store events and jobs. The default uses <see cref="System.Text.Json.JsonSerializerDefaults.Web"/>.
+    /// For trimming and Native AOT, set options whose <c>TypeInfoResolver</c> is your source-generated <c>JsonSerializerContext</c>.
+    /// </summary>
+    public System.Text.Json.JsonSerializerOptions? JsonOptions { get; set; }
+
+    internal PulseJson Json { get; } = new();
+
     internal TypeNames EventNames { get; } = TypeNames.ForEvents();
 
     internal TypeNames JobNames { get; } = TypeNames.ForJobs();
@@ -77,7 +85,19 @@ public sealed class PulseSharpBuilder
     /// <returns>This builder.</returns>
     public PulseSharpBuilder UseInMemory()
     {
-        _createStore = () => new InMemoryStore();
+        return UseStore(new InMemoryStore());
+    }
+
+    /// <summary>
+    /// Uses a store: the place where events, cursors and jobs are kept. Store packages call this from their own
+    /// method, such as <c>UseSqlite</c>.
+    /// </summary>
+    /// <param name="store">The store.</param>
+    /// <returns>This builder.</returns>
+    public PulseSharpBuilder UseStore(IPulseStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        _createStore = () => store;
         return this;
     }
 
@@ -102,7 +122,7 @@ public sealed class PulseSharpBuilder
             name,
             handler,
             typeof(TEvent),
-            (_, @event, context, cancellationToken) => handler((TEvent)@event, context, cancellationToken)
+            (_, data, context, cancellationToken) => handler(Json.Deserialize<TEvent>(data), context, cancellationToken)
         );
         return this;
     }
@@ -124,7 +144,8 @@ public sealed class PulseSharpBuilder
             HandlerNames.NameOf(typeof(THandler)),
             typeof(THandler),
             typeof(TEvent),
-            InvokeHandlerClass<TEvent, THandler>
+            (services, data, context, cancellationToken) =>
+                InvokeHandlerClass<TEvent, THandler>(services, Json.Deserialize<TEvent>(data), context, cancellationToken)
         );
         return this;
     }
@@ -144,7 +165,7 @@ public sealed class PulseSharpBuilder
         AddJob(
             typeof(TJob),
             handler,
-            (_, job, context, cancellationToken) => handler((TJob)job, context, cancellationToken)
+            (_, data, context, cancellationToken) => handler(Json.Deserialize<TJob>(data), context, cancellationToken)
         );
         return this;
     }
@@ -162,7 +183,12 @@ public sealed class PulseSharpBuilder
         where THandler : class, IJobHandler<TJob>
     {
         _services.TryAddTransient<THandler>();
-        AddJob(typeof(TJob), typeof(THandler), InvokeJobHandlerClass<TJob, THandler>);
+        AddJob(
+            typeof(TJob),
+            typeof(THandler),
+            (services, data, context, cancellationToken) =>
+                InvokeJobHandlerClass<TJob, THandler>(services, Json.Deserialize<TJob>(data), context, cancellationToken)
+        );
         return this;
     }
 
@@ -237,6 +263,11 @@ public sealed class PulseSharpBuilder
         if (MaxParallelStreams < 1 || MaxParallelJobs < 1)
         {
             throw new InvalidOperationException("PulseSharp: MaxParallelStreams and MaxParallelJobs must be at least 1.");
+        }
+
+        if (JsonOptions is not null)
+        {
+            Json.Use(JsonOptions);
         }
 
         if (JobLease <= PollInterval)
@@ -317,7 +348,7 @@ public sealed class PulseSharpBuilder
 
     private static async Task InvokeJobHandlerClass<TJob, THandler>(
         IServiceProvider services,
-        object job,
+        TJob job,
         JobContext context,
         CancellationToken cancellationToken
     )
@@ -328,7 +359,7 @@ public sealed class PulseSharpBuilder
         await using (scope.ConfigureAwait(false))
         {
             var handler = scope.ServiceProvider.GetRequiredService<THandler>();
-            await handler.Handle((TJob)job, context, cancellationToken).ConfigureAwait(false);
+            await handler.Handle(job, context, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -376,7 +407,7 @@ public sealed class PulseSharpBuilder
 
     private static async Task InvokeHandlerClass<TEvent, THandler>(
         IServiceProvider services,
-        object @event,
+        TEvent @event,
         EventContext context,
         CancellationToken cancellationToken
     )
@@ -387,7 +418,7 @@ public sealed class PulseSharpBuilder
         await using (scope.ConfigureAwait(false))
         {
             var handler = scope.ServiceProvider.GetRequiredService<THandler>();
-            await handler.Handle((TEvent)@event, context, cancellationToken).ConfigureAwait(false);
+            await handler.Handle(@event, context, cancellationToken).ConfigureAwait(false);
         }
     }
 }

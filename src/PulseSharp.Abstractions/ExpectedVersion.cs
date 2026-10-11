@@ -31,6 +31,22 @@ public readonly record struct ExpectedVersion
     public long Position { get; }
 
     /// <summary>
+    /// Checks this expectation against the stream as it is now. Stores call it while appending.
+    /// </summary>
+    /// <param name="currentPosition">The position of the last event in the stream, or 0 when the stream has no events.</param>
+    /// <returns><see langword="true"/> when an event may be appended.</returns>
+    public bool Allows(long currentPosition)
+    {
+        return Kind switch
+        {
+            ExpectedVersionKind.NoStream => currentPosition == 0,
+            ExpectedVersionKind.StreamExists => currentPosition > 0,
+            ExpectedVersionKind.Exactly => currentPosition == Position,
+            _ => true
+        };
+    }
+
+    /// <summary>
     /// The last event of the stream must be at exactly <paramref name="position"/>.
     /// </summary>
     /// <param name="position">The expected position of the last event, starting at 1.</param>

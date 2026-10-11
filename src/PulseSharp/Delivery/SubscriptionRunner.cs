@@ -224,7 +224,7 @@ internal sealed class SubscriptionRunner(
             state.Pending.Dequeue();
             state.Position = stored.StreamPosition;
             ClearFailure(state);
-            await SaveCursor(state, cancellationToken).ConfigureAwait(false);
+            await SaveCursor(state, CancellationToken.None).ConfigureAwait(false);
         }
 
         return null;
@@ -298,7 +298,7 @@ internal sealed class SubscriptionRunner(
             state.Status = CursorState.Failed;
             state.RetryAt = null;
             Log.HandlerStopped(logger, failure, subscription.Name, stored.EventId, stored.Stream, state.Attempts);
-            await store.SaveCursor(state.ToCursor(subscription.Name), cancellationToken).ConfigureAwait(false);
+            await store.SaveCursor(state.ToCursor(subscription.Name), CancellationToken.None).ConfigureAwait(false);
             return null;
         }
 
@@ -315,7 +315,7 @@ internal sealed class SubscriptionRunner(
             settings.MaxAttempts,
             retryAt
         );
-        await store.SaveCursor(state.ToCursor(subscription.Name), cancellationToken).ConfigureAwait(false);
+        await store.SaveCursor(state.ToCursor(subscription.Name), CancellationToken.None).ConfigureAwait(false);
         return retryAt;
     }
 

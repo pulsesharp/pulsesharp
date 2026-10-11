@@ -23,17 +23,17 @@ internal sealed class StreamState(string stream)
         return Status == CursorState.Failed || (RetryAt is { } retryAt && retryAt > now);
     }
 
-    public Cursor ToCursor(string handlerName)
+    public HandlerCursor ToCursor(string handlerName)
     {
-        return new Cursor(handlerName, Stream, Position, Status, Attempts, LastError, RetryAt);
+        return new HandlerCursor(handlerName, Stream, Position, Status, Attempts, LastError, RetryAt);
     }
 
-    public static StreamState From(Cursor cursor)
+    public static StreamState From(HandlerCursor cursor)
     {
         return new StreamState(cursor.Stream)
         {
             Position = cursor.Position,
-            Status = cursor.Status,
+            Status = cursor.State,
             Attempts = cursor.Attempts,
             LastError = cursor.LastError,
             RetryAt = cursor.RetryAt

@@ -53,6 +53,7 @@ public static class PulseSharpServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton(settings);
         services.AddSingleton(new PulseNames(builder.EventNames, builder.JobNames));
+        services.AddSingleton(builder.Json);
         services.AddSingleton(store);
         services.AddSingleton<WakeUpSignal>();
         services.AddSingleton<ControlRequests>();

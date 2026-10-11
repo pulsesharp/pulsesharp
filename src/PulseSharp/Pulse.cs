@@ -7,6 +7,7 @@ namespace PulseSharp;
 internal sealed class Pulse(
     IPulseStore store,
     PulseNames names,
+    PulseJson json,
     WakeUpSignal signal,
     PulseSharpSettings settings,
     TimeProvider time
@@ -44,12 +45,12 @@ internal sealed class Pulse(
             EventIds.NewVersion7(now),
             streamName,
             names.Events.NameOf(@event.GetType()),
-            @event,
+            json.Serialize(@event),
             settings.Node,
             now
         );
 
-        var stored = await store.Append(newEvent, options.ExpectedVersion, cancellationToken).ConfigureAwait(false);
+        var stored = await store.Append(newEvent, options.ExpectedVersion, options.Transaction, cancellationToken).ConfigureAwait(false);
         signal.Notify();
         return new EmitResult(stored.EventId, stored.StreamPosition);
     }
@@ -68,9 +69,9 @@ internal sealed class Pulse(
 
         var now = time.GetUtcNow();
         var runAt = options.RunAt is { } requested && requested > now ? requested : now;
-        var newJob = new NewJob(EventIds.NewVersion7(now), names.Jobs.NameOf(job.GetType()), job, now, runAt);
+        var newJob = new NewJob(EventIds.NewVersion7(now), names.Jobs.NameOf(job.GetType()), json.Serialize(job), now, runAt);
 
-        var stored = await store.AddJob(newJob, cancellationToken).ConfigureAwait(false);
+        var stored = await store.AddJob(newJob, options.Transaction, cancellationToken).ConfigureAwait(false);
         signal.Notify();
         return stored.Id;
     }
