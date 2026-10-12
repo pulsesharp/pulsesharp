@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><strong>Lightweight events and jobs for .NET — from the device to the cloud.</strong></p>
+<p align="center"><strong>Lightweight events and jobs for .NET - from the device to the cloud.</strong></p>
 
 ---
 

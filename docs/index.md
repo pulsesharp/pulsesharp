@@ -4,7 +4,7 @@ layout: home
 hero:
   name: PulseSharp
   text: Events and jobs for .NET
-  tagline: Lightweight and durable — from the device to the cloud. Write a handler once, run it in a desktop app or on a server farm.
+  tagline: Lightweight and durable - from the device to the cloud. Write a handler once, run it in a desktop app or on a server farm.
   image:
     light: /mark-on-light.svg
     dark: /mark-on-dark.svg
@@ -26,16 +26,16 @@ features:
     details: The contracts package has zero dependencies. The engine needs only the Microsoft.Extensions abstractions. Add only what you use.
   - icon: 🔁
     title: Durable events
-    details: Events are saved first, then delivered to every handler — in order per stream, with retries, and one failing stream never blocks the rest.
+    details: Events are saved first, then delivered to every handler - in order per stream, with retries, and one failing stream never blocks the rest.
   - icon: ⏱️
     title: Background jobs
     details: Enqueue work now or later. Retries, progress reports, cancellation and leases that recover jobs from a stopped app instance.
   - icon: 🎛️
     title: Full control
-    details: See every handler's cursor and every job. Retry, skip, rewind, cancel — from code or, soon, from the Monitor UI.
+    details: See every handler's cursor and every job. Retry, skip, rewind, cancel - from code or, soon, from the Monitor UI.
   - icon: 🖥️
     title: Any app
-    details: Desktop, web, worker or console — anything that uses the .NET Generic Host. No ASP.NET Core in the core packages. Native AOT friendly.
+    details: Desktop, web, worker or console - anything that uses the .NET Generic Host. No ASP.NET Core in the core packages. Native AOT friendly.
   - icon: ☁️
     title: Device to cloud
     details: Built for offline-first apps. Events carry a global id and their origin node, ready for device ↔ cloud sync (coming in 0.5).

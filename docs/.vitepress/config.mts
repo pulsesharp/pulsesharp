@@ -4,7 +4,7 @@ const base = '/pulsesharp/'
 
 export default defineConfig({
   title: 'PulseSharp',
-  description: 'Lightweight events and jobs for .NET — from the device to the cloud.',
+  description: 'Lightweight events and jobs for .NET - from the device to the cloud.',
   base,
   cleanUrls: true,
   srcExclude: ['scripts/**', 'README.md'],
@@ -12,7 +12,7 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}favicon.svg` }],
     ['meta', { name: 'theme-color', content: '#0A0F1A' }],
     ['meta', { property: 'og:title', content: 'PulseSharp' }],
-    ['meta', { property: 'og:description', content: 'Lightweight events and jobs for .NET — from the device to the cloud.' }],
+    ['meta', { property: 'og:description', content: 'Lightweight events and jobs for .NET - from the device to the cloud.' }],
     ['meta', { property: 'og:image', content: `https://pulsesharp.github.io${base}social-preview.png` }],
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],

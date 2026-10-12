@@ -42,7 +42,7 @@ For a one-off name, use `StreamName.From("Sale-42")`.
 
 ### Daily streams
 
-Some events are about the whole app rather than one entity — settings, navigation, homepage changes. Put them in a stream that starts again every day, so it never grows forever:
+Some events are about the whole app rather than one entity - settings, navigation, homepage changes. Put them in a stream that starts again every day, so it never grows forever:
 
 ```csharp
 public sealed record SettingsStream(DateOnly Date) : DailyStreamName(Date)
@@ -70,8 +70,8 @@ public sealed class Checkout(IPulse pulse)
     public async Task Complete(Sale sale, CancellationToken ct)
     {
         var result = await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total), ct);
-        // result.EventId        — globally unique, time-ordered (UUIDv7)
-        // result.StreamPosition — 1, 2, 3 … within the stream
+        // result.EventId        - globally unique, time-ordered (UUIDv7)
+        // result.StreamPosition - 1, 2, 3 … within the stream
     }
 }
 ```
@@ -91,7 +91,7 @@ try
 }
 catch (ExpectedVersionMismatchException conflict)
 {
-    // conflict.Stream, conflict.Expected, conflict.ActualPosition — read again and retry
+    // conflict.Stream, conflict.Expected, conflict.ActualPosition - read again and retry
 }
 ```
 
@@ -104,7 +104,7 @@ catch (ExpectedVersionMismatchException conflict)
 
 ## Saving data and the event together
 
-The classic bug: your data is saved, but the event is lost (or the other way around). `EmitOptions.Transaction` takes an ADO.NET `DbTransaction`, so a database store saves the event in **your** transaction — both succeed or both fail.
+The classic bug: your data is saved, but the event is lost (or the other way around). `EmitOptions.Transaction` takes an ADO.NET `DbTransaction`, so a database store saves the event in **your** transaction - both succeed or both fail.
 
 ```csharp
 await using var tx = await connection.BeginTransactionAsync(ct);
@@ -119,7 +119,7 @@ The SQLite store honours the transaction (see [Stores](/guide/stores#saving-your
 
 ## Nodes
 
-Every event records the **node** that emitted it — `EventContext.Origin`. Set a clear name per app instance:
+Every event records the **node** that emitted it - `EventContext.Origin`. Set a clear name per app instance:
 
 ```csharp
 builder.Services.AddPulseSharp(pulse =>

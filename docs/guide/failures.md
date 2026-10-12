@@ -43,7 +43,7 @@ await control.Retry("print-receipt", "Sale-42");
 
 ### Skip
 
-The event can never succeed (bad data)? Skip it — the handler continues with the next event:
+The event can never succeed (bad data)? Skip it - the handler continues with the next event:
 
 ```csharp
 await control.Skip("print-receipt", "Sale-42");
@@ -65,4 +65,4 @@ The handler handles every stored event again, in order per stream.
 
 ## Hooks for alerts
 
-PulseSharp sends no e-mail and has no built-in alerting — on purpose. Connect your own: the log events (`PulseSharp` category, event ids `1001` retry, `1002` stopped, `2001`/`2002` jobs) work with any logging or monitoring tool, and `GetCursors()` / `GetJobs(JobState.Failed)` make a simple health check.
+PulseSharp sends no e-mail and has no built-in alerting - on purpose. Connect your own: the log events (`PulseSharp` category, event ids `1001` retry, `1002` stopped, `2001`/`2002` jobs) work with any logging or monitoring tool, and `GetCursors()` / `GetJobs(JobState.Failed)` make a simple health check.

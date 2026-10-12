@@ -20,7 +20,7 @@ builder.Services.AddPulseSharp(pulse =>
 
 ## Handler classes
 
-For real work — with dependencies from dependency injection — implement `IEventHandler<TEvent>`:
+For real work - with dependencies from dependency injection - implement `IEventHandler<TEvent>`:
 
 ```csharp
 public sealed class UpdateStock(IStockRepository stock) : IEventHandler<SaleCompleted>
@@ -103,4 +103,4 @@ pulse.MaxParallelStreams = 8;
 
 ## Write handlers that are safe to repeat
 
-Delivery is **at-least-once**: after a crash at the wrong moment, a handler can see the same event again. Make handlers idempotent — for example, store `context.EventId` with the data you write and skip events you have already applied. See [Delivery guarantees](/concepts/delivery).
+Delivery is **at-least-once**: after a crash at the wrong moment, a handler can see the same event again. Make handlers idempotent - for example, store `context.EventId` with the data you write and skip events you have already applied. See [Delivery guarantees](/concepts/delivery).

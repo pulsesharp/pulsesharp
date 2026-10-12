@@ -1,6 +1,6 @@
 # Getting started
 
-In five minutes you will emit an event, handle it, and run a background job — in a plain console app.
+In five minutes you will emit an event, handle it, and run a background job - in a plain console app.
 
 ## 1. Create the app
 
@@ -17,7 +17,7 @@ PulseSharp runs inside the [.NET Generic Host](https://learn.microsoft.com/dotne
 
 ## 2. Describe what happens
 
-An **event** is a plain record. A **stream** groups the events of one thing — here, one sale.
+An **event** is a plain record. A **stream** groups the events of one thing - here, one sale.
 
 ```csharp
 public sealed record SaleCompleted(int SaleNumber, decimal Total);
@@ -105,8 +105,8 @@ Report for 2026-10-11 exported.
 
 ## Next steps
 
-- [Emitting events](/guide/events) — streams, expected versions, transactions
-- [Handlers](/guide/handlers) — handler classes, several event types, assembly scanning
-- [Failures and control](/guide/failures) — retries, stopped streams, retry / skip / rewind
-- [Background jobs](/guide/jobs) — delays, progress, cancel, leases
+- [Emitting events](/guide/events) - streams, expected versions, transactions
+- [Handlers](/guide/handlers) - handler classes, several event types, assembly scanning
+- [Failures and control](/guide/failures) - retries, stopped streams, retry / skip / rewind
+- [Background jobs](/guide/jobs) - delays, progress, cancel, leases
 - A complete runnable sample lives in [`samples/ConsoleSample`](https://github.com/pulsesharp/pulsesharp/tree/main/samples/ConsoleSample).

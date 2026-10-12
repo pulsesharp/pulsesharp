@@ -26,7 +26,7 @@ They are marked `[RequiresDynamicCode]` and `[RequiresUnreferencedCode]`, so the
 
 ## JSON
 
-Events and jobs are stored as JSON. In a trimmed or Native AOT app, give PulseSharp a source-generated `JsonSerializerContext` through `pulse.JsonOptions` — see [How data is stored](/guide/stores#how-data-is-stored).
+Events and jobs are stored as JSON. In a trimmed or Native AOT app, give PulseSharp a source-generated `JsonSerializerContext` through `pulse.JsonOptions` - see [How data is stored](/guide/stores#how-data-is-stored).
 
 ## Names
 

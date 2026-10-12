@@ -99,10 +99,10 @@ await control.RetryJob(jobId);
 | `Running` | A worker is running it |
 | `Retrying` | The last attempt failed; it runs again at `RunAt` |
 | `Succeeded` | Done |
-| `Failed` | Failed on every attempt — `RetryJob` runs it again |
-| `Canceled` | Cancelled — `RetryJob` runs it again |
+| `Failed` | Failed on every attempt - `RetryJob` runs it again |
+| `Canceled` | Cancelled - `RetryJob` runs it again |
 
-**Cancel** stops a waiting job at once. For a running job, the handler's `CancellationToken` is cancelled within about one poll interval — pass the token to your async calls so the job stops cleanly.
+**Cancel** stops a waiting job at once. For a running job, the handler's `CancellationToken` is cancelled within about one poll interval - pass the token to your async calls so the job stops cleanly.
 
 ## Failures and retries
 
@@ -110,7 +110,7 @@ A handler that throws is retried with the same growing delay as events, up to `M
 
 ## Leases: jobs survive a stopped app
 
-When a worker starts a job it takes a **lease** (`JobLease`, default 5 minutes) and renews it every poll interval. If the app instance stops unexpectedly, the lease runs out and another worker — or the same app after a restart — picks the job up again. On a normal shutdown the job is handed back at once, and that attempt is not counted.
+When a worker starts a job it takes a **lease** (`JobLease`, default 5 minutes) and renews it every poll interval. If the app instance stops unexpectedly, the lease runs out and another worker - or the same app after a restart - picks the job up again. On a normal shutdown the job is handed back at once, and that attempt is not counted.
 
 ## Parallelism
 
