@@ -60,7 +60,7 @@ await control.Rewind("sales-report");
 The handler handles every stored event again, in order per stream.
 
 ::: tip
-`Retry`, `Skip` and `Rewind` return when the handler has applied the request. An unknown handler name throws `ArgumentException`; retrying a stream the handler has never seen, or skipping when nothing is waiting, throws `InvalidOperationException`.
+`Retry`, `Skip` and `Rewind` return when the change is stored, and work from any app instance: the instance that holds the handler applies the change within about one poll interval. An unknown handler name throws `ArgumentException`; retrying a stream the handler has never seen, or skipping when nothing is waiting, throws `InvalidOperationException`.
 :::
 
 ## Hooks for alerts

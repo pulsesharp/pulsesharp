@@ -57,3 +57,40 @@ jobs:
           name: packages
           path: artifacts/
           retention-days: 7
+
+  postgres:
+    name: PostgreSQL tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pulsesharp
+          POSTGRES_PASSWORD: pulsesharp
+          POSTGRES_DB: pulsesharp_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pulsesharp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PULSESHARP_TEST_POSTGRES: Host=localhost;Port=5432;Username=pulsesharp;Password=pulsesharp;Database=pulsesharp_tests
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+
+      - name: Test against PostgreSQL
+        run: dotnet test --configuration Release --filter "FullyQualifiedName~Postgres"

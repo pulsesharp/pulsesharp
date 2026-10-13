@@ -4,6 +4,20 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0-alpha] - 2026-10-13
+
+### Added
+
+- `PulseSharp.PostgreSql`: `pulse.UsePostgreSql(connectionString, schema)` (schema `pulsesharp` by default). Tables are created and upgraded on start under an advisory lock; event and job data is stored as `jsonb`; your own `NpgsqlTransaction` saves data and events or jobs together. Depends only on Npgsql.
+- Several app instances on one database: each handler is delivered by one instance at a time (a renewed lease, `HandlerLease`, default 30 seconds); a stopped instance hands over at once, a crashed one after the lease. Jobs are claimed with `FOR UPDATE SKIP LOCKED`.
+- Store contract: `LeaseHandler`, `ReleaseHandler`, `ChangeCursors`, `ReadStream`, `HandlerLeaseStatus`, and `SaveCursor` with a revision.
+- Conformance tests now run against PostgreSQL too (in CI with a PostgreSQL service), plus multi-instance tests on SQLite and PostgreSQL. A PostgreSQL benchmark.
+
+### Changed
+
+- `IPulseControl` changes (`Retry`, `Skip`, `Rewind`) go through the store and work from any app instance. They return when the change is stored; the instance holding the handler applies it within about one poll interval.
+- PostgreSQL appends run one transaction at a time per schema, so readers never skip an event that commits late.
+
 ## [0.3.0-alpha] - 2026-10-11
 
 ### Added
@@ -59,7 +73,8 @@ First preview. Events only, with the in-memory store.
 
 - `IPulse.Enqueue` throws `NotSupportedException`. Jobs arrive in 0.2.
 
-[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.3.0-alpha...HEAD
+[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.4.0-alpha...HEAD
+[0.4.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.2.0-alpha...v0.3.0-alpha
 [0.2.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.1.0-alpha...v0.2.0-alpha
 [0.1.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.0.1-alpha...v0.1.0-alpha

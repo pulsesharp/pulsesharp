@@ -30,6 +30,7 @@ builder.Services.AddPulseSharp(pulse =>
 | `MaxParallelStreams` | `4` | Streams one handler works on at the same time |
 | `MaxParallelJobs` | `4` | Jobs this app instance runs at the same time |
 | `JobLease` | 5 minutes | How long a running job stays claimed without a heartbeat. Must be longer than `PollInterval` |
+| `HandlerLease` | 30 seconds | How long one app instance keeps a handler without renewing its claim. Another instance takes over after this time if the holder crashes. Must be longer than `PollInterval` |
 | `JsonOptions` | web defaults | How events and jobs are stored as JSON. Set a source-generated resolver for Native AOT - see [Stores](/guide/stores#how-data-is-stored) |
 
 ## Stores
@@ -39,7 +40,7 @@ builder.Services.AddPulseSharp(pulse =>
 | `UseInMemory()` | Keeps everything in memory. Lost when the app stops - for tests, samples and learning |
 | `UseSqlite(connectionString)` | SQLite file - durable, for desktop, mobile and small servers (`PulseSharp.Sqlite`). See [Stores](/guide/stores) |
 | `UseStore(store)` | Your own `IPulseStore` implementation |
-| `UsePostgreSql(...)` | *Coming in 0.4* |
+| `UsePostgreSql(connectionString, schema)` | PostgreSQL, several app instances (`PulseSharp.PostgreSql`, schema `pulsesharp` by default). See [Stores](/guide/stores#postgresql) |
 
 ## Handlers
 

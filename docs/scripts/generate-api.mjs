@@ -6,7 +6,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const packages = [
   { id: 'PulseSharp.Abstractions', page: 'abstractions', intro: 'Contracts for handlers and libraries. No dependencies.' },
   { id: 'PulseSharp', page: 'core', intro: 'The engine: setup, the in-memory store, the control API and the store contract.' },
-  { id: 'PulseSharp.Sqlite', page: 'sqlite', intro: 'The SQLite store.' }
+  { id: 'PulseSharp.Sqlite', page: 'sqlite', intro: 'The SQLite store.' },
+  { id: 'PulseSharp.PostgreSql', page: 'postgresql', intro: 'The PostgreSQL store.' }
 ]
 
 const builtInNames = {

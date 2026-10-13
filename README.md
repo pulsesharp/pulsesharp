@@ -9,7 +9,7 @@
 
 ---
 
-> **Status: preview (`0.3`).** Events and jobs work with the in-memory and **SQLite** stores. PostgreSQL and sync are coming (see the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap)). The API may change before `1.0`.
+> **Status: preview (`0.4`).** Events and jobs work with the in-memory, **SQLite** and **PostgreSQL** stores. Device-to-cloud sync is coming (see the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap)). The API may change before `1.0`.
 
 ## What is PulseSharp?
 
@@ -84,6 +84,7 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - **`IPulseControl`**: list the cursors of every handler, **retry** or **skip** a failed event, or **rewind** a handler to handle everything again.
 - **Handler discovery**: `pulse.AddHandlersFromAssembly(typeof(Program).Assembly)`, or explicit `AddHandler<TEvent, THandler>()` / `AddJobHandler<TJob, THandler>()` for trimming and Native AOT.
 - **SQLite store**: `pulse.UseSqlite("Data Source=app.db")` (package `PulseSharp.Sqlite`). Events, cursors and jobs survive a restart; your own `SqliteTransaction` saves data and events together.
+- **PostgreSQL store**: `pulse.UsePostgreSql(connectionString)` (package `PulseSharp.PostgreSql`, schema `pulsesharp` by default). Run several app instances on one database: each handler is delivered by one instance at a time, jobs are claimed with `SKIP LOCKED`, and `IPulseControl` works from any instance.
 - **Jobs**: `Enqueue` now or later (`RunAt`), one handler per job type, retries with a growing delay, progress (`context.Report`), cancel (the handler's token), `MaxParallelJobs` (default 4), and leases so a job left behind by a stopped app instance runs again. `IPulseControl` reads, lists, cancels and retries jobs.
 
 See [`samples/ConsoleSample`](samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them; then an end-of-day job reports its progress.
@@ -99,6 +100,7 @@ In-memory store, one machine, BenchmarkDotNet short run ([`benchmarks/`](benchma
 | Emit + deliver to 3 handlers | ~5.6 µs | 1.9 KB |
 | Enqueue + run a job | ~21 µs | 4.5 KB |
 | Emit to a SQLite file (pooled, fully durable) | ~0.66 ms | 5.7 KB |
+| Emit to PostgreSQL (one round trip, local Docker) | ~2.0 ms | 5.8 KB |
 
 Numbers for the PostgreSQL store will follow with that store.
 
@@ -117,7 +119,7 @@ Numbers for the PostgreSQL store will follow with that store.
 | `PulseSharp.Abstractions` | Contracts for handlers and libraries. No dependencies. | Preview |
 | `PulseSharp` | The engine, with an in-memory store built in | Preview |
 | `PulseSharp.Sqlite` | SQLite store, for desktop and mobile apps | Preview |
-| `PulseSharp.PostgreSql` | PostgreSQL store, for servers | Planned (0.4) |
+| `PulseSharp.PostgreSql` | PostgreSQL store, for servers and several app instances | Preview |
 | `PulseSharp.Sync` | Device ↔ cloud sync | Planned (0.5) |
 | `PulseSharp.Monitor` | Optional web UI | Planned (0.6) |
 

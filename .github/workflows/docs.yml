@@ -38,7 +38,9 @@ jobs:
           global-json-file: global.json
 
       - name: Build the libraries (XML docs for the API reference)
-        run: dotnet build src/PulseSharp.Sqlite/PulseSharp.Sqlite.csproj --configuration Release
+        run: |
+          dotnet build src/PulseSharp.Sqlite/PulseSharp.Sqlite.csproj --configuration Release
+          dotnet build src/PulseSharp.PostgreSql/PulseSharp.PostgreSql.csproj --configuration Release
 
       - name: Set up Node
         uses: actions/setup-node@v7.0.0

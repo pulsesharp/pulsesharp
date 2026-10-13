@@ -6,7 +6,7 @@ A **store** is where PulseSharp keeps events, handler cursors and jobs. You choo
 |---|---|---|
 | In-memory | `PulseSharp` (built in) | Tests, samples, learning. Everything is lost when the app stops. |
 | SQLite | `PulseSharp.Sqlite` | Desktop, mobile and small server apps. Events and jobs survive a restart. |
-| PostgreSQL | `PulseSharp.PostgreSql` | Servers and several app instances - *coming in 0.4* |
+| PostgreSQL | `PulseSharp.PostgreSql` | Servers, including several app instances sharing one database. |
 
 ## SQLite
 
@@ -50,6 +50,54 @@ await transaction.CommitAsync(ct);
 ```
 
 Handlers receive the event only after the commit. The transaction must belong to the same database file; a transaction from another provider throws `ArgumentException`.
+
+## PostgreSQL
+
+```bash
+dotnet add package PulseSharp.PostgreSql --prerelease
+```
+
+```csharp
+builder.Services.AddPulseSharp(pulse =>
+{
+    pulse.UsePostgreSql(builder.Configuration.GetConnectionString("Events")!);
+    pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
+});
+```
+
+PulseSharp keeps its tables in their own schema, `pulsesharp` by default. Choose another name with the second argument, for example one schema per app sharing a database:
+
+```csharp
+pulse.UsePostgreSql(connectionString, schema: "billing_events");
+```
+
+On start, PulseSharp creates the schema and its tables, and upgrades them in later versions. The database user needs permission to create a schema, or create the schema yourself and grant the user rights on it. Event and job data is stored as `jsonb`, so you can read it with any SQL tool.
+
+### Several app instances
+
+Run as many instances of your app as you like against one database:
+
+- **Events:** each handler is delivered by **one instance at a time**. That instance holds a lease on the handler and renews it every poll interval. When it stops, another instance takes over at once; when it crashes, after `HandlerLease` (default 30 seconds). Different handlers can run on different instances.
+- **Jobs:** every instance runs jobs. A job is claimed by exactly one instance (`FOR UPDATE SKIP LOCKED`), so instances never wait for each other.
+- **Control:** `IPulseControl` works from any instance. A retry, skip or rewind is stored, and the instance that holds the handler applies it within about one poll interval.
+
+### Saving your data and the event together
+
+Pass your own `NpgsqlTransaction`; the event or job is saved in it and committed together with your data:
+
+```csharp
+await using var connection = await dataSource.OpenConnectionAsync(ct);
+await using var transaction = await connection.BeginTransactionAsync(ct);
+
+await SaveSale(connection, transaction, sale, ct);
+await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total), new EmitOptions { Transaction = transaction }, ct);
+
+await transaction.CommitAsync(ct);
+```
+
+::: tip Keep emitting transactions short
+To make sure no reader ever skips an event, appends to one schema run one transaction at a time. A transaction that emits an event holds that turn until it commits, so keep it short: do the slow work before you open it.
+:::
 
 ## How data is stored
 
