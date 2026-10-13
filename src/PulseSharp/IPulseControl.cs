@@ -4,6 +4,9 @@ namespace PulseSharp;
 /// Lets an app or an operator see and steer handlers: list their cursors, retry or skip a failed event,
 /// or rewind a handler so it handles every event again.
 /// </summary>
+/// <remarks>
+/// Changes go through the store, so they work from any app instance, whichever instance currently delivers the handler.
+/// </remarks>
 public interface IPulseControl
 {
     /// <summary>
@@ -20,8 +23,8 @@ public interface IPulseControl
     /// </summary>
     /// <param name="handlerName">The handler.</param>
     /// <param name="stream">The stream.</param>
-    /// <param name="cancellationToken">Stops waiting for the handler to apply the request.</param>
-    /// <returns>A task that completes when the handler has applied the request.</returns>
+    /// <param name="cancellationToken">Cancels the change.</param>
+    /// <returns>A task that completes when the change is stored. The app instance that holds the handler applies it within about one poll interval.</returns>
     /// <exception cref="ArgumentException">No handler has this name.</exception>
     /// <exception cref="InvalidOperationException">The handler has no cursor for this stream.</exception>
     Task Retry(string handlerName, string stream, CancellationToken cancellationToken = default);
@@ -31,8 +34,8 @@ public interface IPulseControl
     /// </summary>
     /// <param name="handlerName">The handler.</param>
     /// <param name="stream">The stream.</param>
-    /// <param name="cancellationToken">Stops waiting for the handler to apply the request.</param>
-    /// <returns>A task that completes when the handler has applied the request.</returns>
+    /// <param name="cancellationToken">Cancels the change.</param>
+    /// <returns>A task that completes when the change is stored. The app instance that holds the handler applies it within about one poll interval.</returns>
     /// <exception cref="ArgumentException">No handler has this name.</exception>
     /// <exception cref="InvalidOperationException">The stream has no waiting event for this handler.</exception>
     Task Skip(string handlerName, string stream, CancellationToken cancellationToken = default);
@@ -42,8 +45,8 @@ public interface IPulseControl
     /// Use it after fixing a bug in a handler, or to rebuild data the handler writes.
     /// </summary>
     /// <param name="handlerName">The handler.</param>
-    /// <param name="cancellationToken">Stops waiting for the handler to apply the request.</param>
-    /// <returns>A task that completes when the handler has applied the request.</returns>
+    /// <param name="cancellationToken">Cancels the change.</param>
+    /// <returns>A task that completes when the change is stored. The app instance that holds the handler applies it within about one poll interval.</returns>
     /// <exception cref="ArgumentException">No handler has this name.</exception>
     Task Rewind(string handlerName, CancellationToken cancellationToken = default);
 

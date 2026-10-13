@@ -11,6 +11,7 @@ internal sealed record PulseSharpSettings(
     int MaxParallelStreams,
     int MaxParallelJobs,
     TimeSpan JobLease,
+    TimeSpan HandlerLease,
     IReadOnlyList<Subscription> Subscriptions,
     IReadOnlyDictionary<string, JobRegistration> Jobs
 )

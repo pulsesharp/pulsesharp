@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using PulseSharp.Control;
 using PulseSharp.Jobs;
 using PulseSharp.Stores;
 
@@ -10,7 +9,6 @@ internal sealed class PulseSharpHostedService(
     PulseSharpSettings settings,
     IPulseStore store,
     WakeUpSignal signal,
-    ControlRequests requests,
     IServiceProvider services,
     TimeProvider time,
     ILoggerFactory loggerFactory
@@ -26,7 +24,7 @@ internal sealed class PulseSharpHostedService(
     {
         var logger = loggerFactory.CreateLogger("PulseSharp");
         var runs = settings.Subscriptions
-            .Select(subscription => new SubscriptionRunner(subscription, store, signal, requests, settings, services, time, logger))
+            .Select(subscription => new SubscriptionRunner(subscription, store, signal, settings, services, time, logger))
             .Select(runner => runner.Run(stoppingToken))
             .ToList();
 

@@ -52,6 +52,21 @@ public interface IPulseStore
     );
 
     /// <summary>
+    /// Reads the events of one stream after a stream position, in stream order.
+    /// </summary>
+    /// <param name="stream">The stream name.</param>
+    /// <param name="afterStreamPosition">Only events after this position are returned. 0 reads from the start.</param>
+    /// <param name="maxCount">The maximum number of events to return.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>The events, ordered by stream position.</returns>
+    Task<IReadOnlyList<StoredEvent>> ReadStream(
+        string stream,
+        long afterStreamPosition,
+        int maxCount,
+        CancellationToken cancellationToken
+    );
+
+    /// <summary>
     /// Loads every cursor of one handler.
     /// </summary>
     /// <param name="handlerName">The handler.</param>
@@ -60,12 +75,54 @@ public interface IPulseStore
     Task<IReadOnlyList<HandlerCursor>> LoadCursors(string handlerName, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Saves a cursor, replacing the one with the same handler and stream.
+    /// Saves a cursor, replacing the one with the same handler and stream, but only when the handler's revision is
+    /// still <paramref name="revision"/>. A stale writer (a handler that lost its lease, or a change made by
+    /// <see cref="IPulseControl"/> in the meantime) is rejected.
     /// </summary>
     /// <param name="cursor">The cursor.</param>
+    /// <param name="revision">The handler revision the writer is working with (see <see cref="LeaseHandler"/>).</param>
     /// <param name="cancellationToken">Cancels the save.</param>
-    /// <returns>A task that completes when the cursor is saved.</returns>
-    Task SaveCursor(HandlerCursor cursor, CancellationToken cancellationToken);
+    /// <returns><see langword="true"/> when the cursor was saved; <see langword="false"/> when the revision has changed.</returns>
+    Task<bool> SaveCursor(HandlerCursor cursor, long revision, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Takes or renews the lease of a handler, so that only one app instance delivers its events at a time.
+    /// The lease is granted when nobody holds it, when it expired, or when <paramref name="workerId"/> already holds it.
+    /// </summary>
+    /// <param name="handlerName">The handler.</param>
+    /// <param name="workerId">The runner asking for the lease.</param>
+    /// <param name="now">The current time.</param>
+    /// <param name="duration">How long the lease lasts without renewal.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>Whether the lease is held, and the handler's current revision.</returns>
+    Task<HandlerLeaseStatus> LeaseHandler(
+        string handlerName,
+        string workerId,
+        DateTimeOffset now,
+        TimeSpan duration,
+        CancellationToken cancellationToken
+    );
+
+    /// <summary>
+    /// Gives up the lease of a handler held by <paramref name="workerId"/>, so another instance can take it at once.
+    /// </summary>
+    /// <param name="handlerName">The handler.</param>
+    /// <param name="workerId">The runner giving up the lease.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>A task that completes when the lease is released.</returns>
+    Task ReleaseHandler(string handlerName, string workerId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Changes cursors of a handler on behalf of <see cref="IPulseControl"/>, atomically: increases the handler's
+    /// revision by one (creating the handler's record when needed) and saves <paramref name="cursors"/> with the new
+    /// revision, in one transaction. Writes made with an older revision are rejected from then on, and the lease holder
+    /// reloads its cursors.
+    /// </summary>
+    /// <param name="handlerName">The handler.</param>
+    /// <param name="cursors">The cursors to save. They all belong to <paramref name="handlerName"/>.</param>
+    /// <param name="cancellationToken">Cancels the change.</param>
+    /// <returns>The new revision.</returns>
+    Task<long> ChangeCursors(string handlerName, IReadOnlyList<HandlerCursor> cursors, CancellationToken cancellationToken);
 
     /// <summary>
     /// Saves a new job in the <see cref="JobState.Pending"/> state.

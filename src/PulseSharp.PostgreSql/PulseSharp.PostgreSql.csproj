@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>PulseSharp.PostgreSql</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>PostgreSQL store for PulseSharp: durable events and jobs for servers, with several app instances sharing one database. Depends only on Npgsql.</Description>
+    <PackageTags>$(PackageTags);postgresql;postgres;npgsql</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PulseSharp\PulseSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PulseSharp.Tests" />
+  </ItemGroup>
+
+</Project>

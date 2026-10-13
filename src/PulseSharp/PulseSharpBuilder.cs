@@ -73,6 +73,12 @@ public sealed class PulseSharpBuilder
     /// </summary>
     public System.Text.Json.JsonSerializerOptions? JsonOptions { get; set; }
 
+    /// <summary>
+    /// How long one app instance keeps a handler without renewing its claim. Only the holder delivers that handler's
+    /// events; when an instance stops unexpectedly, another takes over after this time. The default is 30 seconds.
+    /// </summary>
+    public TimeSpan HandlerLease { get; set; } = TimeSpan.FromSeconds(30);
+
     internal PulseJson Json { get; } = new();
 
     internal TypeNames EventNames { get; } = TypeNames.ForEvents();
@@ -270,9 +276,9 @@ public sealed class PulseSharpBuilder
             Json.Use(JsonOptions);
         }
 
-        if (JobLease <= PollInterval)
+        if (JobLease <= PollInterval || HandlerLease <= PollInterval)
         {
-            throw new InvalidOperationException("PulseSharp: JobLease must be longer than PollInterval.");
+            throw new InvalidOperationException("PulseSharp: JobLease and HandlerLease must be longer than PollInterval.");
         }
 
         return new PulseSharpSettings(
@@ -283,6 +289,7 @@ public sealed class PulseSharpBuilder
             MaxParallelStreams,
             MaxParallelJobs,
             JobLease,
+            HandlerLease,
             _subscriptions.Values.ToList(),
             new Dictionary<string, JobRegistration>(_jobs, StringComparer.Ordinal)
         );

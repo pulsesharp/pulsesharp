@@ -6,11 +6,12 @@ namespace PulseSharp.Control;
 internal sealed class PulseControl(
     PulseSharpSettings settings,
     IPulseStore store,
-    ControlRequests requests,
     WakeUpSignal signal,
     TimeProvider time
 ) : IPulseControl
 {
+    private const int StreamPageSize = 100;
+
     public async Task<JobInfo?> GetJob(Guid jobId, CancellationToken cancellationToken = default)
     {
         var job = await store.GetJob(jobId, cancellationToken).ConfigureAwait(false);
@@ -44,13 +45,12 @@ internal sealed class PulseControl(
     {
         var handlerNames = handlerName is null
             ? settings.Subscriptions.Select(subscription => subscription.Name).ToList()
-            : [KnownHandler(handlerName)];
+            : [KnownHandler(handlerName).Name];
 
         var cursors = new List<HandlerCursor>();
         foreach (var name in handlerNames)
         {
-            var stored = await store.LoadCursors(name, cancellationToken).ConfigureAwait(false);
-            cursors.AddRange(stored);
+            cursors.AddRange(await store.LoadCursors(name, cancellationToken).ConfigureAwait(false));
         }
 
         return cursors
@@ -59,38 +59,69 @@ internal sealed class PulseControl(
             .ToList();
     }
 
-    public Task Retry(string handlerName, string stream, CancellationToken cancellationToken = default)
+    public async Task Retry(string handlerName, string stream, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stream);
-        return Send(handlerName, new ControlRequest(ControlAction.Retry, stream), cancellationToken);
+        var cursor = await ExistingCursor(KnownHandler(handlerName), stream, cancellationToken).ConfigureAwait(false);
+        await Change([Cleared(cursor)], cursor.HandlerName, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task Skip(string handlerName, string stream, CancellationToken cancellationToken = default)
+    public async Task Skip(string handlerName, string stream, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stream);
-        return Send(handlerName, new ControlRequest(ControlAction.Skip, stream), cancellationToken);
+        var subscription = KnownHandler(handlerName);
+        var cursor = await ExistingCursor(subscription, stream, cancellationToken).ConfigureAwait(false);
+        var waiting = await NextHandledEvent(subscription, cursor, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Handler '{handlerName}' has no waiting event in stream '{stream}'.");
+
+        await Change([Cleared(cursor) with { Position = waiting.StreamPosition }], subscription.Name, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task Rewind(string handlerName, CancellationToken cancellationToken = default)
+    public async Task Rewind(string handlerName, CancellationToken cancellationToken = default)
     {
-        return Send(handlerName, new ControlRequest(ControlAction.Rewind, null), cancellationToken);
+        var subscription = KnownHandler(handlerName);
+        var cursors = await store.LoadCursors(subscription.Name, cancellationToken).ConfigureAwait(false);
+        var rewound = cursors.Select(cursor => Cleared(cursor) with { Position = 0 }).ToList();
+        await Change(rewound, subscription.Name, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task Send(string handlerName, ControlRequest request, CancellationToken cancellationToken)
+    private async Task Change(IReadOnlyList<HandlerCursor> cursors, string handlerName, CancellationToken cancellationToken)
     {
-        requests.Add(KnownHandler(handlerName), request);
+        await store.ChangeCursors(handlerName, cursors, cancellationToken).ConfigureAwait(false);
         signal.Notify();
-        await request.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private string KnownHandler(string handlerName)
+    private async Task<HandlerCursor> ExistingCursor(Subscription subscription, string stream, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stream);
+        var cursors = await store.LoadCursors(subscription.Name, cancellationToken).ConfigureAwait(false);
+        return cursors.FirstOrDefault(cursor => cursor.Stream == stream)
+            ?? throw new InvalidOperationException($"Handler '{subscription.Name}' has no cursor for stream '{stream}'.");
+    }
+
+    private async Task<StoredEvent?> NextHandledEvent(Subscription subscription, HandlerCursor cursor, CancellationToken cancellationToken)
+    {
+        var after = cursor.Position;
+        while (true)
+        {
+            var page = await store.ReadStream(cursor.Stream, after, StreamPageSize, cancellationToken).ConfigureAwait(false);
+            var handled = page.FirstOrDefault(stored => subscription.Handles(stored.EventName));
+            if (handled is not null || page.Count < StreamPageSize)
+            {
+                return handled;
+            }
+
+            after = page[^1].StreamPosition;
+        }
+    }
+
+    private Subscription KnownHandler(string handlerName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(handlerName);
-        if (!settings.Subscriptions.Any(subscription => subscription.Name == handlerName))
-        {
-            throw new ArgumentException($"No handler is named '{handlerName}'.", nameof(handlerName));
-        }
+        return settings.Subscriptions.FirstOrDefault(subscription => subscription.Name == handlerName)
+            ?? throw new ArgumentException($"No handler is named '{handlerName}'.", nameof(handlerName));
+    }
 
-        return handlerName;
+    private static HandlerCursor Cleared(HandlerCursor cursor)
+    {
+        return cursor with { State = CursorState.Active, Attempts = 0, LastError = null, RetryAt = null };
     }
 }

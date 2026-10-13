@@ -50,6 +50,14 @@ internal static class SqliteSchema
                 cancel_requested INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX pulsesharp_jobs_due ON pulsesharp_jobs (state, run_at);
+            """),
+        (2, """
+            CREATE TABLE pulsesharp_handlers (
+                handler_name TEXT    PRIMARY KEY,
+                lease_owner  TEXT    NULL,
+                lease_until  INTEGER NULL,
+                revision     INTEGER NOT NULL
+            );
             """)
     ];
 

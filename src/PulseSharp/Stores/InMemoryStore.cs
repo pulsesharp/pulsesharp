@@ -9,6 +9,7 @@ internal sealed class InMemoryStore : IPulseStore
     private readonly Dictionary<string, long> _streamPositions = new(StringComparer.Ordinal);
     private readonly Dictionary<(string HandlerName, string Stream), HandlerCursor> _cursors = [];
     private readonly Dictionary<Guid, StoredJob> _jobs = [];
+    private readonly Dictionary<string, HandlerRecord> _handlers = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, long> _jobOrder = [];
 
     public Task Initialize(CancellationToken cancellationToken)
@@ -80,14 +81,86 @@ internal sealed class InMemoryStore : IPulseStore
         }
     }
 
-    public Task SaveCursor(HandlerCursor cursor, CancellationToken cancellationToken)
+    public Task<bool> SaveCursor(HandlerCursor cursor, long revision, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
+            if (!_handlers.TryGetValue(cursor.HandlerName, out var handler) || handler.Revision != revision)
+            {
+                return Task.FromResult(false);
+            }
+
             _cursors[(cursor.HandlerName, cursor.Stream)] = cursor;
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<HandlerLeaseStatus> LeaseHandler(
+        string handlerName,
+        string workerId,
+        DateTimeOffset now,
+        TimeSpan duration,
+        CancellationToken cancellationToken
+    )
+    {
+        lock (_gate)
+        {
+            var handler = _handlers.GetValueOrDefault(handlerName) ?? new HandlerRecord(null, null, 0);
+            var free = handler.Owner is null || handler.Owner == workerId || handler.LeaseUntil < now;
+            if (free)
+            {
+                handler = handler with { Owner = workerId, LeaseUntil = now + duration };
+            }
+
+            _handlers[handlerName] = handler;
+            return Task.FromResult(new HandlerLeaseStatus(free, handler.Revision));
+        }
+    }
+
+    public Task ReleaseHandler(string handlerName, string workerId, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (_handlers.TryGetValue(handlerName, out var handler) && handler.Owner == workerId)
+            {
+                _handlers[handlerName] = handler with { Owner = null, LeaseUntil = null };
+            }
         }
 
         return Task.CompletedTask;
+    }
+
+    public Task<long> ChangeCursors(string handlerName, IReadOnlyList<HandlerCursor> cursors, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            var handler = _handlers.GetValueOrDefault(handlerName) ?? new HandlerRecord(null, null, 0);
+            handler = handler with { Revision = handler.Revision + 1 };
+            _handlers[handlerName] = handler;
+            foreach (var cursor in cursors)
+            {
+                _cursors[(cursor.HandlerName, cursor.Stream)] = cursor;
+            }
+
+            return Task.FromResult(handler.Revision);
+        }
+    }
+
+    public Task<IReadOnlyList<StoredEvent>> ReadStream(
+        string stream,
+        long afterStreamPosition,
+        int maxCount,
+        CancellationToken cancellationToken
+    )
+    {
+        lock (_gate)
+        {
+            IReadOnlyList<StoredEvent> events = _events
+                .Where(stored => stored.Stream == stream && stored.StreamPosition > afterStreamPosition)
+                .Take(maxCount)
+                .ToList();
+            return Task.FromResult(events);
+        }
     }
 
     public Task<StoredJob> AddJob(NewJob newJob, DbTransaction? transaction, CancellationToken cancellationToken)
@@ -303,4 +376,6 @@ internal sealed class InMemoryStore : IPulseStore
             CancelRequested = false
         };
     }
+
+    private sealed record HandlerRecord(string? Owner, DateTimeOffset? LeaseUntil, long Revision);
 }

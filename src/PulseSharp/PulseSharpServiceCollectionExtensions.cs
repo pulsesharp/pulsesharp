@@ -56,14 +56,12 @@ public static class PulseSharpServiceCollectionExtensions
         services.AddSingleton(builder.Json);
         services.AddSingleton(store);
         services.AddSingleton<WakeUpSignal>();
-        services.AddSingleton<ControlRequests>();
         services.AddSingleton<IPulse, Pulse>();
         services.AddSingleton<IPulseControl, PulseControl>();
         services.AddHostedService(provider => new PulseSharpHostedService(
             settings,
             store,
             provider.GetRequiredService<WakeUpSignal>(),
-            provider.GetRequiredService<ControlRequests>(),
             provider,
             provider.GetRequiredService<TimeProvider>(),
             provider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance

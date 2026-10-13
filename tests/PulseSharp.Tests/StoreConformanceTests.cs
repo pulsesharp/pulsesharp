@@ -1,4 +1,5 @@
 using System.Text;
+using PulseSharp.PostgreSql;
 using PulseSharp.Sqlite;
 using PulseSharp.Stores;
 
@@ -47,16 +48,17 @@ public abstract class StoreConformanceTests : IDisposable
     [Fact]
     public async Task ReadsEventsAfterAPositionFilteredByName()
     {
-        var first = await Append("Sale-A", "SaleCompleted", data: "one");
+        var first = await Append("Sale-A", "SaleCompleted", data: "{\"number\":1}");
         await Append("Sale-A", "SaleRefunded");
-        var third = await Append("Sale-B", "SaleCompleted", data: "three");
+        var third = await Append("Sale-B", "SaleCompleted", data: "{\"number\":3}");
 
         var all = await Store.ReadAfter(0, Names("SaleCompleted"), 100, None);
         var afterFirst = await Store.ReadAfter(first.GlobalPosition, Names("SaleCompleted"), 100, None);
         var limited = await Store.ReadAfter(0, Names("SaleCompleted", "SaleRefunded"), 2, None);
 
         Assert.Equal([first.EventId, third.EventId], all.Select(stored => stored.EventId));
-        Assert.Equal("one", Encoding.UTF8.GetString(all[0].Data));
+        Assert.Contains("\"number\":", Encoding.UTF8.GetString(all[0].Data), StringComparison.Ordinal);
+        Assert.Contains("1", Encoding.UTF8.GetString(all[0].Data), StringComparison.Ordinal);
         Assert.Equal(Now, all[0].EmittedAt);
         Assert.Equal("till-1", all[0].Origin);
         Assert.Equal([third.EventId], afterFirst.Select(stored => stored.EventId));
@@ -64,26 +66,97 @@ public abstract class StoreConformanceTests : IDisposable
     }
 
     [Fact]
-    public async Task SavesAndReplacesCursors()
+    public async Task SavesAndReplacesCursorsForTheCurrentRevision()
     {
-        await Store.SaveCursor(new HandlerCursor("receipts", "Sale-A", 1, CursorState.Active, 0, null, null), None);
-        await Store.SaveCursor(new HandlerCursor("receipts", "Sale-A", 2, CursorState.Retrying, 1, "boom", Now), None);
-        await Store.SaveCursor(new HandlerCursor("other", "Sale-A", 5, CursorState.Active, 0, null, null), None);
+        var revision = (await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromMinutes(1), None)).Revision;
+        var other = (await Store.LeaseHandler("other", "worker-a", Now, TimeSpan.FromMinutes(1), None)).Revision;
+
+        Assert.True(await Store.SaveCursor(new HandlerCursor("receipts", "Sale-A", 1, CursorState.Active, 0, null, null), revision, None));
+        Assert.True(await Store.SaveCursor(new HandlerCursor("receipts", "Sale-A", 2, CursorState.Retrying, 1, "boom", Now), revision, None));
+        Assert.True(await Store.SaveCursor(new HandlerCursor("other", "Sale-A", 5, CursorState.Active, 0, null, null), other, None));
 
         var cursor = Assert.Single(await Store.LoadCursors("receipts", None));
-
         Assert.Equal(new HandlerCursor("receipts", "Sale-A", 2, CursorState.Retrying, 1, "boom", Now), cursor);
+    }
+
+    [Fact]
+    public async Task RejectsCursorWritesFromAnOldRevision()
+    {
+        var old = (await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromMinutes(1), None)).Revision;
+        var current = await Store.ChangeCursors(
+            "receipts",
+            [new HandlerCursor("receipts", "Sale-A", 7, CursorState.Active, 0, null, null)],
+            None
+        );
+        var afterChange = Assert.Single(await Store.LoadCursors("receipts", None));
+
+        var stale = await Store.SaveCursor(new HandlerCursor("receipts", "Sale-A", 9, CursorState.Active, 0, null, null), old, None);
+        var fresh = await Store.SaveCursor(new HandlerCursor("receipts", "Sale-A", 3, CursorState.Active, 0, null, null), current, None);
+
+        Assert.Equal(7, afterChange.Position);
+        Assert.False(stale);
+        Assert.True(fresh);
+        Assert.Equal(current, old + 1);
+        Assert.Equal(3, Assert.Single(await Store.LoadCursors("receipts", None)).Position);
+        Assert.Equal(current, (await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromMinutes(1), None)).Revision);
+        Assert.False(await Store.SaveCursor(new HandlerCursor("unknown", "Sale-A", 1, CursorState.Active, 0, null, null), 0, None));
+    }
+
+    [Fact]
+    public async Task GivesAHandlerLeaseToOneWorkerAtATime()
+    {
+        var first = await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromSeconds(30), None);
+        var renewed = await Store.LeaseHandler("receipts", "worker-a", Now.AddSeconds(10), TimeSpan.FromSeconds(30), None);
+        var refused = await Store.LeaseHandler("receipts", "worker-b", Now.AddSeconds(20), TimeSpan.FromSeconds(30), None);
+        var takenOver = await Store.LeaseHandler("receipts", "worker-b", Now.AddSeconds(41), TimeSpan.FromSeconds(30), None);
+
+        Assert.True(first.Held);
+        Assert.True(renewed.Held);
+        Assert.False(refused.Held);
+        Assert.True(takenOver.Held);
+        Assert.False((await Store.LeaseHandler("receipts", "worker-a", Now.AddSeconds(42), TimeSpan.FromSeconds(30), None)).Held);
+    }
+
+    [Fact]
+    public async Task AReleasedHandlerLeaseCanBeTakenAtOnce()
+    {
+        await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromMinutes(5), None);
+
+        await Store.ReleaseHandler("receipts", "worker-b", None);
+        var stillHeld = await Store.LeaseHandler("receipts", "worker-b", Now.AddSeconds(1), TimeSpan.FromMinutes(5), None);
+        await Store.ReleaseHandler("receipts", "worker-a", None);
+        var taken = await Store.LeaseHandler("receipts", "worker-b", Now.AddSeconds(2), TimeSpan.FromMinutes(5), None);
+
+        Assert.False(stillHeld.Held);
+        Assert.True(taken.Held);
+    }
+
+    [Fact]
+    public async Task ReadsOneStreamInOrder()
+    {
+        await Append("Sale-A", "SaleCompleted");
+        await Append("Sale-B", "SaleCompleted");
+        await Append("Sale-A", "SaleRefunded");
+        await Append("Sale-A", "SaleCompleted");
+
+        var afterFirst = await Store.ReadStream("Sale-A", 1, 10, None);
+        var limited = await Store.ReadStream("Sale-A", 0, 2, None);
+
+        Assert.Equal([2L, 3L], afterFirst.Select(stored => stored.StreamPosition));
+        Assert.Equal(["SaleRefunded", "SaleCompleted"], afterFirst.Select(stored => stored.EventName));
+        Assert.Equal([1L, 2L], limited.Select(stored => stored.StreamPosition));
+        Assert.Empty(await Store.ReadStream("Sale-Z", 0, 10, None));
     }
 
     [Fact]
     public async Task AddsAPendingJob()
     {
-        var id = await AddJob(data: "products.csv");
+        var id = await AddJob(data: "{\"file\":\"products.csv\"}");
 
         var job = (await Store.GetJob(id, None))!;
 
         Assert.Equal(JobState.Pending, job.State);
-        Assert.Equal("products.csv", Encoding.UTF8.GetString(job.Data));
+        Assert.Contains("products.csv", Encoding.UTF8.GetString(job.Data), StringComparison.Ordinal);
         Assert.Equal(0, job.Attempts);
         Assert.Equal(Now, job.EnqueuedAt);
     }
@@ -276,6 +349,25 @@ public sealed class SqliteStoreTests : StoreConformanceTests
     public override void Dispose()
     {
         _database.Dispose();
+        base.Dispose();
+    }
+}
+
+public sealed class PostgresStoreTests : StoreConformanceTests
+{
+    private readonly TempSchema _schema = TempSchema.CreateOrSkip();
+
+    public PostgresStoreTests()
+    {
+        Store = new PostgresStore(_schema.ConnectionString, _schema.Name);
+    }
+
+    protected override IPulseStore Store { get; }
+
+    public override void Dispose()
+    {
+        ((PostgresStore)Store).DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _schema.Dispose();
         base.Dispose();
     }
 }
