@@ -77,7 +77,7 @@ On start, PulseSharp creates the schema and its tables, and upgrades them in lat
 
 Run as many instances of your app as you like against one database:
 
-- **Events:** each handler is delivered by **one instance at a time**. That instance holds a lease on the handler and renews it every poll interval. When it stops, another instance takes over at once; when it crashes, after `HandlerLease` (default 30 seconds). Different handlers can run on different instances.
+- **Events:** each handler is delivered by **one instance at a time**. That instance holds a lease on the handler and renews it every poll interval. When it stops, another instance takes over at once; when it crashes, after `Advanced.HandlerLease` (default 30 seconds). Different handlers can run on different instances.
 - **Jobs:** every instance runs jobs. A job is claimed by exactly one instance (`FOR UPDATE SKIP LOCKED`), so instances never wait for each other.
 - **Control:** `IPulseControl` works from any instance. A retry, skip or rewind is stored, and the instance that holds the handler applies it within about one poll interval.
 
@@ -103,14 +103,14 @@ To make sure no reader ever skips an event, appends to one schema run one transa
 
 Events and jobs are stored as **JSON** (System.Text.Json, web defaults: camelCase). Additive changes to an event record - a new optional property - just work with old stored events.
 
-To change the JSON settings, or for trimming and Native AOT, set `JsonOptions`:
+To change the JSON settings, or for trimming and Native AOT, set `Advanced.JsonOptions`:
 
 ```csharp
 [JsonSerializable(typeof(SaleCompleted))]
 [JsonSerializable(typeof(ExportReport))]
 internal partial class AppJson : JsonSerializerContext;
 
-pulse.JsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+pulse.Advanced.JsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
 {
     TypeInfoResolver = AppJson.Default
 };

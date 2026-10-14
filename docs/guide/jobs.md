@@ -19,7 +19,13 @@ public sealed record ExportReport(DateOnly Day);
 
 ## Add the handler
 
-Inline:
+The short way:
+
+```csharp
+pulse.OnJob<ExportReport>(async job => await Export(job.Day));
+```
+
+With progress and cancel (see below), take the context and the token too:
 
 ```csharp
 pulse.OnJob<ExportReport>(async (job, context, ct) =>
@@ -54,13 +60,20 @@ var jobId = await pulse.Enqueue(new ExportReport(today), ct);
 Run it later:
 
 ```csharp
+await pulse.EnqueueIn(new SendReminder(customerId), TimeSpan.FromHours(1));
+await pulse.EnqueueAt(new ExportReport(today), tonight);
+```
+
+Both are short forms of `Enqueue` with `EnqueueOptions`:
+
+```csharp
 await pulse.Enqueue(new ExportReport(today), new EnqueueOptions { RunAt = tonight }, ct);
 ```
 
 `EnqueueOptions.Transaction` saves the job inside your database transaction, like [events](/guide/events#saving-data-and-the-event-together).
 
 ::: info Precision
-Delayed and retrying jobs are picked up on the next check, so they start within about one `PollInterval` (default 1 second) of `RunAt`.
+Delayed and retrying jobs are picked up on the next check, so they start within about one `Advanced.PollInterval` (default 1 second) of `RunAt`.
 :::
 
 ## Report progress
@@ -110,12 +123,12 @@ A handler that throws is retried with the same growing delay as events, up to `M
 
 ## Leases: jobs survive a stopped app
 
-When a worker starts a job it takes a **lease** (`JobLease`, default 5 minutes) and renews it every poll interval. If the app instance stops unexpectedly, the lease runs out and another worker - or the same app after a restart - picks the job up again. On a normal shutdown the job is handed back at once, and that attempt is not counted.
+When a worker starts a job it takes a **lease** (`Advanced.JobLease`, default 5 minutes) and renews it every poll interval. If the app instance stops unexpectedly, the lease runs out and another worker - or the same app after a restart - picks the job up again. On a normal shutdown the job is handed back at once, and that attempt is not counted.
 
 ## Parallelism
 
 ```csharp
-pulse.MaxParallelJobs = 4;   // default 4 jobs at the same time per app instance
+pulse.Advanced.MaxParallelJobs = 4;   // default 4 jobs at the same time per app instance
 ```
 
 A job without a registered handler stays `Pending`, so one app instance can enqueue jobs that another instance runs (with a shared database store).

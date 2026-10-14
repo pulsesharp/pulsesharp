@@ -34,12 +34,12 @@ internal sealed class PulseJson
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2026",
-        Justification = "The reflection resolver is used only when JsonSerializer.IsReflectionEnabledByDefault is true. Trimmed and Native AOT apps turn it off and pass a source-generated resolver through PulseSharpBuilder.JsonOptions."
+        Justification = "The reflection resolver is used only when JsonSerializer.IsReflectionEnabledByDefault is true. Trimmed and Native AOT apps turn it off and pass a source-generated resolver through PulseSharpBuilder.Advanced.JsonOptions."
     )]
     [UnconditionalSuppressMessage(
         "AOT",
         "IL3050",
-        Justification = "The reflection resolver is used only when JsonSerializer.IsReflectionEnabledByDefault is true. Trimmed and Native AOT apps turn it off and pass a source-generated resolver through PulseSharpBuilder.JsonOptions."
+        Justification = "The reflection resolver is used only when JsonSerializer.IsReflectionEnabledByDefault is true. Trimmed and Native AOT apps turn it off and pass a source-generated resolver through PulseSharpBuilder.Advanced.JsonOptions."
     )]
     private static IJsonTypeInfoResolver DefaultResolver()
     {

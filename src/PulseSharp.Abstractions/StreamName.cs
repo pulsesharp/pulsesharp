@@ -39,6 +39,17 @@ public abstract record StreamName
     }
 
     /// <summary>
+    /// Lets a plain string be used as a stream name, for example <c>pulse.Emit("Sale-" + id, sale)</c>.
+    /// </summary>
+    /// <param name="value">The stream name.</param>
+    /// <returns>The stream name.</returns>
+    /// <exception cref="ArgumentException"><paramref name="value"/> is empty or only whitespace.</exception>
+    public static implicit operator StreamName(string value)
+    {
+        return From(value);
+    }
+
+    /// <summary>
     /// Returns the stream name as it is stored.
     /// </summary>
     /// <returns>The stream name.</returns>

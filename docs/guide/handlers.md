@@ -2,9 +2,21 @@
 
 A handler reacts to events. Every handler has a **stable name**: PulseSharp stores how far each handler has got, per stream, under that name (its *cursor*).
 
-## Inline handlers
+## The short way: `When`
 
-Good for small reactions. The name is required:
+```csharp
+builder.Services.AddPulseSharpSqlite("app.db", pulse =>
+{
+    pulse.When<SaleCompleted>(sale => Console.WriteLine($"Sold for {sale.Total}"));
+    pulse.When<PriceChanged>(async change => await shop.UpdatePrice(change.Sku, change.NewPrice));
+});
+```
+
+`When` names the handler for you (`when-SaleCompleted`), so one event type can have one `When` handler. To react to the same event in a second place, give that handler a name with `On`.
+
+## Named inline handlers
+
+`On` takes a name you choose, and gives your code the [event context](#the-event-context) and a cancellation token:
 
 ```csharp
 builder.Services.AddPulseSharp(pulse =>
@@ -94,11 +106,11 @@ Every handler receives an `EventContext`:
 ## Ordering and parallelism
 
 - Within **one stream**, a handler receives events **one at a time, in order**.
-- A handler works on up to `MaxParallelStreams` streams **at the same time** (default 4).
+- A handler works on up to `Advanced.MaxParallelStreams` streams **at the same time** (default 4).
 - Different handlers are completely independent. **Never rely on the order between handlers** of the same event.
 
 ```csharp
-pulse.MaxParallelStreams = 8;
+pulse.Advanced.MaxParallelStreams = 8;
 ```
 
 ## Write handlers that are safe to repeat

@@ -1,19 +1,26 @@
 # Configuration
 
-Everything is configured in one place:
+Most apps need one line. The defaults suit desktop apps, web apps and workers alike:
+
+```csharp
+builder.Services.AddPulseSharpSqlite("app.db", pulse =>
+{
+    pulse.When<SaleCompleted>(sale => Console.WriteLine($"Sold for {sale.Total}"));
+});
+```
+
+When you need more, everything is still in one place:
 
 ```csharp
 builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.UseInMemory();
+    pulse.UseSqlite("Data Source=app.db");
 
     pulse.Node = "till-1";
     pulse.MaxAttempts = 5;
     pulse.RetryDelay = TimeSpan.FromSeconds(1);
-    pulse.PollInterval = TimeSpan.FromSeconds(1);
-    pulse.MaxParallelStreams = 4;
-    pulse.MaxParallelJobs = 4;
-    pulse.JobLease = TimeSpan.FromMinutes(5);
+
+    pulse.Advanced.MaxParallelStreams = 8;
 
     pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
 });
@@ -26,6 +33,13 @@ builder.Services.AddPulseSharp(pulse =>
 | `Node` | machine name | The name of this app instance, stored with every event it emits |
 | `MaxAttempts` | `5` | Attempts per event (per handler) or job before it fails |
 | `RetryDelay` | 1 second | Wait before the first retry; doubles each time, up to 5 minutes |
+
+### Advanced settings
+
+You rarely need these. They live under `pulse.Advanced` so the everyday settings stay easy to find.
+
+| Setting | Default | Meaning |
+|---|---|---|
 | `PollInterval` | 1 second | How often handlers and workers check for work when nothing wakes them. Also the heartbeat of running jobs |
 | `MaxParallelStreams` | `4` | Streams one handler works on at the same time |
 | `MaxParallelJobs` | `4` | Jobs this app instance runs at the same time |
@@ -35,27 +49,39 @@ builder.Services.AddPulseSharp(pulse =>
 
 ## Stores
 
+The one-line setups:
+
+| Method | Store |
+|---|---|
+| `services.AddPulseSharpSqlite("app.db", …)` | SQLite file (`PulseSharp.Sqlite`). Takes a file name or a full connection string |
+| `services.AddPulseSharpPostgreSql(connectionString, …)` | PostgreSQL in the `pulsesharp` schema (`PulseSharp.PostgreSql`) |
+
+Inside `AddPulseSharp(pulse => …)`:
+
 | Method | Store |
 |---|---|
 | `UseInMemory()` | Keeps everything in memory. Lost when the app stops - for tests, samples and learning |
 | `UseSqlite(connectionString)` | SQLite file - durable, for desktop, mobile and small servers (`PulseSharp.Sqlite`). See [Stores](/guide/stores) |
-| `UseStore(store)` | Your own `IPulseStore` implementation |
 | `UsePostgreSql(connectionString, schema)` | PostgreSQL, several app instances (`PulseSharp.PostgreSql`, schema `pulsesharp` by default). See [Stores](/guide/stores#postgresql) |
+| `UseStore(store)` | Your own `IPulseStore` implementation |
 
 ## Handlers
 
 | Method | Adds |
 |---|---|
-| `On<TEvent>(name, handler)` | An inline event handler with a stable name |
+| `When<TEvent>(handler)` | The simplest event handler. Named `when-{EventName}`; one per event type |
+| `On<TEvent>(name, handler)` | An inline event handler with a name you choose, the event context and a cancellation token |
 | `AddHandler<TEvent, THandler>()` | An event handler class (AOT safe) |
-| `OnJob<TJob>(handler)` | The inline handler of a job type |
+| `OnJob<TJob>(handler)` | The inline handler of a job type. `async job => …`, or `async (job, context, ct) => …` for progress and cancel |
 | `AddJobHandler<TJob, THandler>()` | The handler class of a job type (AOT safe) |
 | `AddHandler<THandler>()` | Every event and job interface the class implements (reflection) |
 | `AddHandlersFromAssembly(assembly)` | Every handler class in an assembly (reflection) |
 
 ## Startup checks
 
-PulseSharp refuses to start - with a message that says what to fix - when:
+When everything is fine, PulseSharp logs one line at startup, for example `PulseSharp is ready. Store: SqliteStore, node: till-1, event handlers: 2, job types: 1.`
+
+It refuses to start - with a message that says what to fix - when:
 
 - no store is chosen,
 - two handlers share a name, or two event types or two job types share a name,

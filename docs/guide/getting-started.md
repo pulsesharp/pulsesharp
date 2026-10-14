@@ -1,6 +1,6 @@
 # Getting started
 
-In five minutes you will emit an event, handle it, and run a background job - in a plain console app.
+In five minutes you will save events, react to them, and run a background job - in a plain console app.
 
 ## 1. Create the app
 
@@ -9,35 +9,13 @@ You need the [.NET 8 SDK](https://dotnet.microsoft.com/download) or later.
 ```bash
 dotnet new console -n PulseDemo
 cd PulseDemo
-dotnet add package PulseSharp --prerelease
+dotnet add package PulseSharp.Sqlite --prerelease
 dotnet add package Microsoft.Extensions.Hosting
 ```
 
-PulseSharp runs inside the [.NET Generic Host](https://learn.microsoft.com/dotnet/core/extensions/generic-host), which web apps, worker services and desktop apps can all use. That is why the demo adds `Microsoft.Extensions.Hosting`.
+`PulseSharp.Sqlite` keeps events and jobs in a small database file, so nothing is lost when the app stops. PulseSharp runs inside the [.NET Generic Host](https://learn.microsoft.com/dotnet/core/extensions/generic-host), which web apps, worker services and desktop apps can all use. That is why the demo adds `Microsoft.Extensions.Hosting`.
 
-## 2. Describe what happens
-
-An **event** is a plain record. A **stream** groups the events of one thing - here, one sale.
-
-```csharp
-public sealed record SaleCompleted(int SaleNumber, decimal Total);
-
-public sealed record SaleStream(int SaleNumber) : StreamName
-{
-    public override string Value()
-    {
-        return $"Sale-{SaleNumber}";
-    }
-}
-```
-
-A **job** is also a plain record:
-
-```csharp
-public sealed record ExportReport(DateOnly Day);
-```
-
-## 3. Set up PulseSharp
+## 2. Write the app
 
 Replace `Program.cs`:
 
@@ -48,24 +26,13 @@ using PulseSharp;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.AddPulseSharp(pulse =>
+builder.Services.AddPulseSharpSqlite("demo.db", pulse =>
 {
-    pulse.UseInMemory();
+    pulse.When<SaleCompleted>(sale => Console.WriteLine($"Sale {sale.Number}: {sale.Total:C}"));
 
-    pulse.On<SaleCompleted>("sales-log", (sale, context, ct) =>
+    pulse.OnJob<ExportReport>(async job =>
     {
-        Console.WriteLine($"{context.Stream} #{context.StreamPosition}: {sale.Total:C}");
-        return Task.CompletedTask;
-    });
-
-    pulse.OnJob<ExportReport>(async (job, context, ct) =>
-    {
-        for (var page = 1; page <= 3; page++)
-        {
-            await Task.Delay(200, ct);
-            await context.Report(page, 3, ct);
-        }
-
+        await Task.Delay(500);
         Console.WriteLine($"Report for {job.Day:yyyy-MM-dd} exported.");
     });
 });
@@ -75,38 +42,45 @@ await host.StartAsync();
 
 var pulse = host.Services.GetRequiredService<IPulse>();
 
-await pulse.Emit(new SaleStream(1), new SaleCompleted(1, 12.50m));
-await pulse.Emit(new SaleStream(2), new SaleCompleted(2, 4.99m));
+await pulse.Emit(new SaleCompleted(1, 12.50m));
+await pulse.Emit(new SaleCompleted(2, 4.99m));
 await pulse.Enqueue(new ExportReport(DateOnly.FromDateTime(DateTime.Today)));
 
 await Task.Delay(1500);
 await host.StopAsync();
+
+public sealed record SaleCompleted(int Number, decimal Total);
+
+public sealed record ExportReport(DateOnly Day);
 ```
 
 What is going on:
 
-- `UseInMemory()` chooses where events and jobs are stored. The in-memory store is perfect for learning and tests; durable stores (SQLite, PostgreSQL) are coming.
-- `On<SaleCompleted>("sales-log", …)` adds an event handler with the **stable name** `sales-log`. PulseSharp remembers how far each handler got under that name.
-- `OnJob<ExportReport>(…)` adds the one handler for `ExportReport` jobs. `context.Report` saves progress that any part of the app can read.
-- `Emit` saves the event and returns; delivery happens in the background, in order per stream.
-- `Enqueue` saves the job; a worker runs it.
+- An **event** (`SaleCompleted`) is a plain record that says something happened. A **job** (`ExportReport`) is a plain record that says what work to do.
+- `AddPulseSharpSqlite("demo.db", …)` sets everything up and keeps the data in `demo.db`.
+- `When<SaleCompleted>(…)` runs your code for every sale, in the order the sales happened.
+- `OnJob<ExportReport>(…)` is the code that does the job.
+- `Emit` saves the event and returns at once. Your `When` code runs in the background.
+- `Enqueue` saves the job. A worker runs it in the background.
 
-## 4. Run it
+## 3. Run it
 
 ```bash
 dotnet run
 ```
 
 ```text
-Sale-1 #1: $12.50
-Sale-2 #1: $4.99
-Report for 2026-10-11 exported.
+Sale 1: $12.50
+Sale 2: $4.99
+Report for 2026-10-14 exported.
 ```
+
+Run it again. You see two sales, not four: PulseSharp remembers which events it has already handled, even after a restart.
 
 ## Next steps
 
 - [Emitting events](/guide/events) - streams, expected versions, transactions
-- [Handlers](/guide/handlers) - handler classes, several event types, assembly scanning
+- [Handlers](/guide/handlers) - named handlers, handler classes, assembly scanning
 - [Failures and control](/guide/failures) - retries, stopped streams, retry / skip / rewind
 - [Background jobs](/guide/jobs) - delays, progress, cancel, leases
 - A complete runnable sample lives in [`samples/ConsoleSample`](https://github.com/pulsesharp/pulsesharp/tree/main/samples/ConsoleSample).

@@ -22,11 +22,31 @@ public sealed record SaleCompleted(Guid SaleId, decimal Total);
 
 Two event types with the same name stop the app at startup with a clear message.
 
+## Emit an event
+
+Inject `IPulse` anywhere and call `Emit`:
+
+```csharp
+await pulse.Emit(new SaleCompleted(sale.Id, sale.Total));
+```
+
+That's all you need to start. When `Emit` returns, the event is saved, and every handler receives it in the background, in the order the events were emitted.
+
 ## Streams
 
 Every event belongs to one **stream**: an ordered list of events about one thing. Events of one stream reach each handler **in order**; different streams are independent and handled in parallel.
 
-By convention a stream name is `{Category}-{Id}`. Create a small record per kind of stream:
+When you don't choose a stream, PulseSharp uses one stream per event type (here `SaleCompleted`). That is always correct, but while one event keeps failing in a handler, the later events of that type wait behind it. When events are about separate things (one sale has nothing to do with another), give each thing its own stream with a plain string:
+
+```csharp
+await pulse.Emit("Sale-" + sale.Id, new SaleCompleted(sale.Id, sale.Total));
+```
+
+Now a problem with one sale never holds up the others, and different sales are handled in parallel.
+
+### Stream records
+
+By convention a stream name is `{Category}-{Id}`. In a bigger app, create a small record per kind of stream so the name is built in one place:
 
 ```csharp
 public sealed record SaleStream(Guid SaleId) : StreamName
@@ -60,9 +80,9 @@ await pulse.Emit(new SettingsStream(DateOnly.FromDateTime(DateTime.UtcNow)), new
 // stream name: Settings-2026-10-11
 ```
 
-## Emit
+## The emit result
 
-Inject `IPulse` anywhere and call `Emit`:
+`Emit` returns the event's id and position:
 
 ```csharp
 public sealed class Checkout(IPulse pulse)

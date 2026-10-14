@@ -71,7 +71,7 @@ public sealed class ConfigurationTests
     [Fact]
     public void RefusesAJobLeaseShorterThanThePollInterval()
     {
-        Assert.Throws<InvalidOperationException>(() => Configure(pulse => pulse.JobLease = TimeSpan.FromMilliseconds(10)));
+        Assert.Throws<InvalidOperationException>(() => Configure(pulse => pulse.Advanced.JobLease = TimeSpan.FromMilliseconds(10)));
     }
 
     [Fact]

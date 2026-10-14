@@ -5,6 +5,13 @@ namespace PulseSharp.Delivery;
 internal static partial class Log
 {
     [LoggerMessage(
+        EventId = 1000,
+        Level = LogLevel.Information,
+        Message = "PulseSharp is ready. Store: {Store}, node: {Node}, event handlers: {HandlerCount}, job types: {JobCount}."
+    )]
+    public static partial void Ready(ILogger logger, string store, string node, int handlerCount, int jobCount);
+
+    [LoggerMessage(
         EventId = 1001,
         Level = LogLevel.Warning,
         Message = "Handler {HandlerName} failed on event {EventId} in stream {Stream} (attempt {Attempt} of {MaxAttempts}). Retrying at {RetryAt}."

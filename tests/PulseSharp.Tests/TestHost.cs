@@ -42,7 +42,7 @@ internal sealed class TestHost : IAsyncDisposable
             pulse.UseInMemory();
             pulse.Node = "test-node";
             pulse.RetryDelay = TimeSpan.FromMilliseconds(20);
-            pulse.PollInterval = TimeSpan.FromMilliseconds(50);
+            pulse.Advanced.PollInterval = TimeSpan.FromMilliseconds(50);
             configure(pulse);
         });
 

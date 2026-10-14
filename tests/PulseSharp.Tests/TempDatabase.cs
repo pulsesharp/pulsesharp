@@ -9,6 +9,14 @@ internal sealed class TempDatabase : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
     }
 
+    public string FilePath
+    {
+        get
+        {
+            return _path;
+        }
+    }
+
     public string ConnectionString
     {
         get

@@ -23,53 +23,29 @@ It works the same way in a **desktop app, a web app, a worker service or a conso
 ## A quick look
 
 ```bash
-dotnet add package PulseSharp --prerelease
+dotnet add package PulseSharp.Sqlite --prerelease
 ```
 
 ```csharp
 public sealed record SaleCompleted(Guid SaleId, decimal Total);
+public sealed record SendReceipt(Guid SaleId);
 
-public sealed record SaleStream(Guid SaleId) : StreamName
+// Setup: one line, plus what should happen
+builder.Services.AddPulseSharpSqlite("app.db", pulse =>
 {
-    public override string Value()
-    {
-        return $"Sale-{SaleId}";
-    }
-}
-
-// Setup: choose a store and add handlers. Every event handler has a stable name;
-// every job type has exactly one handler.
-builder.Services.AddPulseSharp(pulse =>
-{
-    pulse.UseInMemory();
-    pulse.On<SaleCompleted>("print-receipt", async (sale, context, ct) => await PrintReceipt(sale, ct));
-    pulse.AddHandler<SaleCompleted, UpdateStock>();
-    pulse.OnJob<ExportReport>(async (job, context, ct) =>
-    {
-        for (var page = 1; page <= 10; page++)
-        {
-            await ExportPage(job, page, ct);
-            await context.Report(page, 10, ct);
-        }
-    });
+    pulse.When<SaleCompleted>(sale => Console.WriteLine($"Sold for {sale.Total}"));
+    pulse.OnJob<SendReceipt>(async receipt => await mailer.SendReceipt(receipt.SaleId));
 });
 
 // Something happened: emit it from anywhere through IPulse
-await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total));
+await pulse.Emit(new SaleCompleted(sale.Id, sale.Total));
 
-// Work to do: run it now, or later, with retries, progress and cancel
-var jobId = await pulse.Enqueue(new ExportReport(today));
-await pulse.Enqueue(new ExportReport(today), new EnqueueOptions { RunAt = tonight });
-
-// A handler class, created through dependency injection for every event
-public sealed class UpdateStock(IStock stock) : IEventHandler<SaleCompleted>
-{
-    public async Task Handle(SaleCompleted sale, EventContext context, CancellationToken ct)
-    {
-        await stock.Decrease(sale.SaleId, ct);
-    }
-}
+// Work to do: now, or later
+await pulse.Enqueue(new SendReceipt(sale.Id));
+await pulse.EnqueueIn(new SendReceipt(sale.Id), TimeSpan.FromMinutes(5));
 ```
+
+That is all most apps need. When you need more, it is there: named handlers and handler classes from dependency injection, a stream per item (`pulse.Emit("Sale-" + id, sale)`), expected versions, your own database transaction, job progress and cancel, and `IPulseControl` to retry, skip or rewind. The [docs](https://pulsesharp.github.io/pulsesharp/) start simple and go deeper step by step.
 
 PulseSharp runs as a hosted service, so it works in any app that uses the .NET Generic Host: web apps, worker services, and desktop apps that build a host.
 
@@ -80,12 +56,12 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - **Stable names**: duplicate handler names or event names stop the app at startup with a clear message.
 - **Optimistic concurrency** with `EmitOptions.ExpectedVersion`.
 - Every event gets a time-ordered, globally unique id (UUIDv7) and records the node that emitted it.
-- **Several streams in parallel** per handler (`MaxParallelStreams`, default 4), still in order within each stream.
+- **Several streams in parallel** per handler (`Advanced.MaxParallelStreams`, default 4), still in order within each stream.
 - **`IPulseControl`**: list the cursors of every handler, **retry** or **skip** a failed event, or **rewind** a handler to handle everything again.
 - **Handler discovery**: `pulse.AddHandlersFromAssembly(typeof(Program).Assembly)`, or explicit `AddHandler<TEvent, THandler>()` / `AddJobHandler<TJob, THandler>()` for trimming and Native AOT.
-- **SQLite store**: `pulse.UseSqlite("Data Source=app.db")` (package `PulseSharp.Sqlite`). Events, cursors and jobs survive a restart; your own `SqliteTransaction` saves data and events together.
+- **SQLite store**: `services.AddPulseSharpSqlite("app.db", …)` or `pulse.UseSqlite("Data Source=app.db")` (package `PulseSharp.Sqlite`). Events, cursors and jobs survive a restart; your own `SqliteTransaction` saves data and events together.
 - **PostgreSQL store**: `pulse.UsePostgreSql(connectionString)` (package `PulseSharp.PostgreSql`, schema `pulsesharp` by default). Run several app instances on one database: each handler is delivered by one instance at a time, jobs are claimed with `SKIP LOCKED`, and `IPulseControl` works from any instance.
-- **Jobs**: `Enqueue` now or later (`RunAt`), one handler per job type, retries with a growing delay, progress (`context.Report`), cancel (the handler's token), `MaxParallelJobs` (default 4), and leases so a job left behind by a stopped app instance runs again. `IPulseControl` reads, lists, cancels and retries jobs.
+- **Jobs**: `Enqueue` now, `EnqueueIn` / `EnqueueAt` later, one handler per job type, retries with a growing delay, progress (`context.Report`), cancel (the handler's token), `Advanced.MaxParallelJobs` (default 4), and leases so a job left behind by a stopped app instance runs again. `IPulseControl` reads, lists, cancels and retries jobs.
 
 See [`samples/ConsoleSample`](samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them; then an end-of-day job reports its progress.
 
@@ -121,7 +97,7 @@ Numbers for the PostgreSQL store will follow with that store.
 | `PulseSharp.Sqlite` | SQLite store, for desktop and mobile apps | Preview |
 | `PulseSharp.PostgreSql` | PostgreSQL store, for servers and several app instances | Preview |
 | `PulseSharp.Sync` | Device ↔ cloud sync | Planned (0.5) |
-| `PulseSharp.Monitor` | Optional web UI | Planned (0.6) |
+| `PulseSharp.Monitor` | Optional web UI | Planned (after 1.0) |
 
 
 ## Learn more

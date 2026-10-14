@@ -45,7 +45,7 @@ public sealed class StartDailyExport(IPulse pulse) : IEventHandler<DayClosed>
 | `PulseSharp.Sqlite` | SQLite store, for desktop and mobile apps | Preview |
 | `PulseSharp.PostgreSql` | PostgreSQL store, for servers and several app instances | Preview |
 | `PulseSharp.Sync` | Device ↔ cloud sync | Planned (0.5) |
-| `PulseSharp.Monitor` | Optional web UI | Planned (0.6) |
+| `PulseSharp.Monitor` | Optional web UI | Planned (after 1.0) |
 
 ::: tip Reference only the contracts from libraries
 A class library that only *defines* events, jobs or handlers can reference `PulseSharp.Abstractions` alone. Only the app that runs them needs `PulseSharp`.

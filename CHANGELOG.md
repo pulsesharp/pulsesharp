@@ -4,6 +4,22 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- A simpler way in, on top of the same engine:
+  - `services.AddPulseSharpSqlite("app.db", pulse => …)` and `services.AddPulseSharpPostgreSql(connectionString, pulse => …)` set PulseSharp up in one call.
+  - `pulse.When<TEvent>(event => …)` reacts to an event without a name, context or token. It is named `when-{EventName}`; a second `When` for the same event stops the app at startup and asks for a name.
+  - `pulse.OnJob<TJob>(async job => …)` runs a job without a context or token.
+  - `pulse.Emit(event)` saves an event to the stream named after its type. A plain string now works as a stream name: `pulse.Emit("Sale-" + id, sale)`.
+  - `pulse.EnqueueIn(job, delay)` and `pulse.EnqueueAt(job, time)`.
+  - One log line at startup: `PulseSharp is ready. Store: …, node: …, event handlers: …, job types: …`.
+- Store contract for sync: `ISyncStore` (`AppendReplicated`, `ReadForSync`, `LoadSyncPosition`, `SaveSyncPosition`), `SyncQuery` and `SyncDirection`, implemented by the in-memory, SQLite and PostgreSQL stores. Replicated events keep their id, origin and time; an event already in the store is skipped. New conformance tests cover it.
+
+### Changed
+
+- **Breaking:** the rarely changed settings moved to `pulse.Advanced`: `PollInterval`, `MaxParallelStreams`, `MaxParallelJobs`, `JobLease`, `HandlerLease` and `JsonOptions`. `Node`, `MaxAttempts` and `RetryDelay` stay on `pulse`.
+- SQLite schema version 3 and PostgreSQL schema version 2 add a sync position table and an index on the event origin. They are applied on start.
+
 ## [0.4.0-alpha] - 2026-10-13
 
 ### Added

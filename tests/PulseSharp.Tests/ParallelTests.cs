@@ -10,7 +10,7 @@ public sealed class ParallelTests
         var gauge = new ConcurrencyGauge();
         await using var host = await TestHost.Start(pulse =>
         {
-            pulse.MaxParallelStreams = 4;
+            pulse.Advanced.MaxParallelStreams = 4;
             pulse.On<SaleCompleted>("slow", async (_, _, ct) => await gauge.Measure(TimeSpan.FromMilliseconds(100), ct));
         });
 
@@ -29,7 +29,7 @@ public sealed class ParallelTests
         var gauge = new ConcurrencyGauge();
         await using var host = await TestHost.Start(pulse =>
         {
-            pulse.MaxParallelStreams = 1;
+            pulse.Advanced.MaxParallelStreams = 1;
             pulse.On<SaleCompleted>("slow", async (_, _, ct) => await gauge.Measure(TimeSpan.FromMilliseconds(20), ct));
         });
 
@@ -48,7 +48,7 @@ public sealed class ParallelTests
         var received = new ConcurrentQueue<(string Stream, int Number)>();
         await using var host = await TestHost.Start(pulse =>
         {
-            pulse.MaxParallelStreams = 4;
+            pulse.Advanced.MaxParallelStreams = 4;
             pulse.On<SaleCompleted>("recorder", async (sale, context, ct) =>
             {
                 await Task.Delay(sale.Number % 3, ct);

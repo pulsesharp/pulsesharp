@@ -46,38 +46,9 @@ public sealed class PulseSharpBuilder
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// How often handlers check for new events when nothing wakes them up. The default is 1 second.
+    /// Settings most apps never need to change: polling, parallelism, leases and JSON options.
     /// </summary>
-    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(1);
-
-    /// <summary>
-    /// How many streams one handler works on at the same time. Events of one stream are always handled
-    /// in order, one at a time. The default is 4.
-    /// </summary>
-    public int MaxParallelStreams { get; set; } = 4;
-
-    /// <summary>
-    /// How many jobs this app instance runs at the same time. The default is 4.
-    /// </summary>
-    public int MaxParallelJobs { get; set; } = 4;
-
-    /// <summary>
-    /// How long a running job stays claimed without a heartbeat. The runner renews the claim every poll interval;
-    /// when an app instance stops unexpectedly, its jobs are picked up again after this time. The default is 5 minutes.
-    /// </summary>
-    public TimeSpan JobLease { get; set; } = TimeSpan.FromMinutes(5);
-
-    /// <summary>
-    /// The JSON options used to store events and jobs. The default uses <see cref="System.Text.Json.JsonSerializerDefaults.Web"/>.
-    /// For trimming and Native AOT, set options whose <c>TypeInfoResolver</c> is your source-generated <c>JsonSerializerContext</c>.
-    /// </summary>
-    public System.Text.Json.JsonSerializerOptions? JsonOptions { get; set; }
-
-    /// <summary>
-    /// How long one app instance keeps a handler without renewing its claim. Only the holder delivers that handler's
-    /// events; when an instance stops unexpectedly, another takes over after this time. The default is 30 seconds.
-    /// </summary>
-    public TimeSpan HandlerLease { get; set; } = TimeSpan.FromSeconds(30);
+    public PulseSharpAdvanced Advanced { get; } = new();
 
     internal PulseJson Json { get; } = new();
 
@@ -105,6 +76,56 @@ public sealed class PulseSharpBuilder
         ArgumentNullException.ThrowIfNull(store);
         _createStore = () => store;
         return this;
+    }
+
+    /// <summary>
+    /// Runs some code every time a <typeparamref name="TEvent"/> is emitted. The simplest way to react to an event.
+    /// </summary>
+    /// <typeparam name="TEvent">The event type.</typeparam>
+    /// <param name="handler">The code that handles one event.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TEvent"/> already has a handler added with <c>When</c>.</exception>
+    /// <remarks>
+    /// The handler is named <c>when-{EventName}</c>, so one event type can have one <c>When</c> handler.
+    /// To add more, give each a name with <see cref="On{TEvent}(string, Func{TEvent, EventContext, CancellationToken, Task})"/>.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// pulse.When&lt;SaleCompleted&gt;(async sale => await printer.Print(sale));
+    /// </code>
+    /// </example>
+    public PulseSharpBuilder When<TEvent>(Func<TEvent, Task> handler)
+        where TEvent : notnull
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        return AddWhen<TEvent>(handler, (@event, _, _) => handler(@event));
+    }
+
+    /// <summary>
+    /// Runs some code every time a <typeparamref name="TEvent"/> is emitted. The simplest way to react to an event.
+    /// </summary>
+    /// <typeparam name="TEvent">The event type.</typeparam>
+    /// <param name="handler">The code that handles one event.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TEvent"/> already has a handler added with <c>When</c>.</exception>
+    /// <remarks>
+    /// The handler is named <c>when-{EventName}</c>, so one event type can have one <c>When</c> handler.
+    /// To add more, give each a name with <see cref="On{TEvent}(string, Func{TEvent, EventContext, CancellationToken, Task})"/>.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// pulse.When&lt;SaleCompleted&gt;(sale => Console.WriteLine($"Sold for {sale.Total}"));
+    /// </code>
+    /// </example>
+    public PulseSharpBuilder When<TEvent>(Action<TEvent> handler)
+        where TEvent : notnull
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        return AddWhen<TEvent>(handler, (@event, _, _) =>
+        {
+            handler(@event);
+            return Task.CompletedTask;
+        });
     }
 
     /// <summary>
@@ -152,6 +173,32 @@ public sealed class PulseSharpBuilder
             typeof(TEvent),
             (services, data, context, cancellationToken) =>
                 InvokeHandlerClass<TEvent, THandler>(services, Json.Deserialize<TEvent>(data), context, cancellationToken)
+        );
+        return this;
+    }
+
+    /// <summary>
+    /// Runs some code for every job of type <typeparamref name="TJob"/>. A job type has exactly one handler.
+    /// </summary>
+    /// <typeparam name="TJob">The job type. Its stored name is the class name, or the name in <see cref="JobNameAttribute"/>.</typeparam>
+    /// <param name="handler">The code that runs one job.</param>
+    /// <returns>This builder.</returns>
+    /// <exception cref="InvalidOperationException"><typeparamref name="TJob"/> already has a handler.</exception>
+    /// <remarks>To report progress or stop when the job is cancelled, use the overload that receives a <see cref="JobContext"/>.</remarks>
+    /// <example>
+    /// <code>
+    /// pulse.OnJob&lt;SendEmail&gt;(async email => await mailer.Send(email));
+    /// </code>
+    /// </example>
+    public PulseSharpBuilder OnJob<TJob>(Func<TJob, Task> handler)
+        where TJob : notnull
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+
+        AddJob(
+            typeof(TJob),
+            handler,
+            (_, data, _, _) => handler(Json.Deserialize<TJob>(data))
         );
         return this;
     }
@@ -261,35 +308,35 @@ public sealed class PulseSharpBuilder
             throw new InvalidOperationException("PulseSharp: MaxAttempts must be at least 1.");
         }
 
-        if (RetryDelay <= TimeSpan.Zero || PollInterval <= TimeSpan.Zero)
+        if (RetryDelay <= TimeSpan.Zero || Advanced.PollInterval <= TimeSpan.Zero)
         {
-            throw new InvalidOperationException("PulseSharp: RetryDelay and PollInterval must be greater than zero.");
+            throw new InvalidOperationException("PulseSharp: RetryDelay and Advanced.PollInterval must be greater than zero.");
         }
 
-        if (MaxParallelStreams < 1 || MaxParallelJobs < 1)
+        if (Advanced.MaxParallelStreams < 1 || Advanced.MaxParallelJobs < 1)
         {
-            throw new InvalidOperationException("PulseSharp: MaxParallelStreams and MaxParallelJobs must be at least 1.");
+            throw new InvalidOperationException("PulseSharp: Advanced.MaxParallelStreams and Advanced.MaxParallelJobs must be at least 1.");
         }
 
-        if (JsonOptions is not null)
+        if (Advanced.JsonOptions is not null)
         {
-            Json.Use(JsonOptions);
+            Json.Use(Advanced.JsonOptions);
         }
 
-        if (JobLease <= PollInterval || HandlerLease <= PollInterval)
+        if (Advanced.JobLease <= Advanced.PollInterval || Advanced.HandlerLease <= Advanced.PollInterval)
         {
-            throw new InvalidOperationException("PulseSharp: JobLease and HandlerLease must be longer than PollInterval.");
+            throw new InvalidOperationException("PulseSharp: Advanced.JobLease and Advanced.HandlerLease must be longer than Advanced.PollInterval.");
         }
 
         return new PulseSharpSettings(
             Node,
             MaxAttempts,
             RetryDelay,
-            PollInterval,
-            MaxParallelStreams,
-            MaxParallelJobs,
-            JobLease,
-            HandlerLease,
+            Advanced.PollInterval,
+            Advanced.MaxParallelStreams,
+            Advanced.MaxParallelJobs,
+            Advanced.JobLease,
+            Advanced.HandlerLease,
             _subscriptions.Values.ToList(),
             new Dictionary<string, JobRegistration>(_jobs, StringComparer.Ordinal)
         );
@@ -390,6 +437,27 @@ public sealed class PulseSharpBuilder
         where THandler : class, IEventHandler<TEvent>
     {
         AddHandler<TEvent, THandler>();
+    }
+
+    private PulseSharpBuilder AddWhen<TEvent>(object source, Func<TEvent, EventContext, CancellationToken, Task> handler)
+        where TEvent : notnull
+    {
+        var name = $"when-{EventNames.NameOf(typeof(TEvent))}";
+        if (_subscriptions.ContainsKey(name))
+        {
+            throw new InvalidOperationException(
+                $"{typeof(TEvent).Name} already has a When handler. To add another handler for the same event, " +
+                $"give it a name: pulse.On<{typeof(TEvent).Name}>(\"your-handler-name\", ...)."
+            );
+        }
+
+        AddToSubscription(
+            name,
+            source,
+            typeof(TEvent),
+            (_, data, context, cancellationToken) => handler(Json.Deserialize<TEvent>(data), context, cancellationToken)
+        );
+        return this;
     }
 
     private void AddToSubscription(string name, object source, Type eventType, EventInvoker invoker)

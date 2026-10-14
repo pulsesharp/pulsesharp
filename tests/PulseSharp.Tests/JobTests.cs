@@ -234,7 +234,7 @@ public sealed class JobTests
         var finished = 0;
         await using var host = await TestHost.Start(pulse =>
         {
-            pulse.MaxParallelJobs = 2;
+            pulse.Advanced.MaxParallelJobs = 2;
             pulse.OnJob<ImportProducts>(async (_, _, ct) =>
             {
                 var now = Interlocked.Increment(ref running);
