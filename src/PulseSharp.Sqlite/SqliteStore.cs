@@ -8,7 +8,7 @@ namespace PulseSharp.Sqlite;
 /// Keeps PulseSharp's events, cursors and jobs in a SQLite database. Tables are created and upgraded on first use;
 /// their names start with <c>pulsesharp_</c>, so they can share a database with your own tables.
 /// </summary>
-public sealed class SqliteStore : IPulseStore
+public sealed class SqliteStore : ISyncStore
 {
     private const string JobColumns =
         "job_id, job_name, data, state, attempts, done, total, last_error, enqueued_at, run_at, " +
@@ -264,6 +264,109 @@ public sealed class SqliteStore : IPulseStore
         command.Parameters.AddWithValue("$after", afterStreamPosition);
         command.Parameters.AddWithValue("$max", maxCount);
         return await ReadEvents(command, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StoredEvent>> AppendReplicated(IReadOnlyList<NewEvent> events, CancellationToken cancellationToken)
+    {
+        if (events.Count == 0)
+        {
+            return [];
+        }
+
+        await using var connection = await Open(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        var saved = new List<StoredEvent>();
+        foreach (var newEvent in events)
+        {
+            await using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = """
+                INSERT INTO pulsesharp_events (event_id, stream, stream_position, event_name, data, origin, emitted_at)
+                SELECT $id, $stream, COALESCE(MAX(stream_position), 0) + 1, $name, $data, $origin, $emittedAt
+                FROM pulsesharp_events
+                WHERE stream = $stream
+                ON CONFLICT (event_id) DO NOTHING
+                RETURNING global_position, stream_position;
+                """;
+            insert.Parameters.AddWithValue("$id", newEvent.EventId.ToString());
+            insert.Parameters.AddWithValue("$stream", newEvent.Stream);
+            insert.Parameters.AddWithValue("$name", newEvent.EventName);
+            insert.Parameters.AddWithValue("$data", newEvent.Data);
+            insert.Parameters.AddWithValue("$origin", newEvent.Origin);
+            insert.Parameters.AddWithValue("$emittedAt", newEvent.EmittedAt.UtcTicks);
+
+            await using var reader = await insert.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                saved.Add(new StoredEvent(
+                    reader.GetInt64(0),
+                    newEvent.EventId,
+                    newEvent.Stream,
+                    reader.GetInt64(1),
+                    newEvent.EventName,
+                    newEvent.Data,
+                    newEvent.Origin,
+                    newEvent.EmittedAt
+                ));
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return saved;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StoredEvent>> ReadForSync(SyncQuery query, CancellationToken cancellationToken)
+    {
+        await using var connection = await Open(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT global_position, event_id, stream, stream_position, event_name, data, origin, emitted_at
+            FROM pulsesharp_events
+            WHERE global_position > $after
+              AND ($origin IS NULL OR origin = $origin)
+              AND ($except IS NULL OR origin <> $except)
+              {PrefixCondition(command, query.StreamPrefixes)}
+            ORDER BY global_position
+            LIMIT $max;
+            """;
+        command.Parameters.AddWithValue("$after", query.AfterPosition);
+        command.Parameters.AddWithValue("$origin", NullableValue(query.Origin));
+        command.Parameters.AddWithValue("$except", NullableValue(query.ExceptOrigin));
+        command.Parameters.AddWithValue("$max", query.MaxCount);
+        return await ReadEvents(command, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<long> LoadSyncPosition(string remote, SyncDirection direction, CancellationToken cancellationToken)
+    {
+        await using var connection = await Open(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT position FROM pulsesharp_sync_positions WHERE remote = $remote AND direction = $direction;";
+        command.Parameters.AddWithValue("$remote", remote);
+        command.Parameters.AddWithValue("$direction", (int)direction);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is long position ? position : 0;
+    }
+
+    /// <inheritdoc />
+    public Task SaveSyncPosition(string remote, SyncDirection direction, long position, CancellationToken cancellationToken)
+    {
+        return ExecuteNonQuery(
+            """
+            INSERT INTO pulsesharp_sync_positions (remote, direction, position)
+            VALUES ($remote, $direction, $position)
+            ON CONFLICT (remote, direction) DO UPDATE SET position = excluded.position;
+            """,
+            command =>
+            {
+                command.Parameters.AddWithValue("$remote", remote);
+                command.Parameters.AddWithValue("$direction", (int)direction);
+                command.Parameters.AddWithValue("$position", position);
+            },
+            cancellationToken
+        );
     }
 
     /// <inheritdoc />
@@ -692,6 +795,24 @@ public sealed class SqliteStore : IPulseStore
         }
 
         return string.Join(", ", placeholders);
+    }
+
+    private static string PrefixCondition(SqliteCommand command, IReadOnlyList<string> prefixes)
+    {
+        if (prefixes.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var conditions = new List<string>();
+        foreach (var prefix in prefixes)
+        {
+            var placeholder = $"$prefix{conditions.Count}";
+            command.Parameters.AddWithValue(placeholder, prefix);
+            conditions.Add($"substr(stream, 1, length({placeholder})) = {placeholder}");
+        }
+
+        return $"AND ({string.Join(" OR ", conditions)})";
     }
 
     private static void AddHolder(SqliteCommand command, Guid jobId, string workerId)

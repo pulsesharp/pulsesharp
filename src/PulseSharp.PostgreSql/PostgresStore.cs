@@ -14,7 +14,7 @@ namespace PulseSharp.PostgreSql;
 /// Appends in one schema run one transaction at a time (a transaction-level advisory lock), so events always become
 /// visible in position order and readers never skip one. Keep transactions that emit events short.
 /// </remarks>
-public sealed partial class PostgresStore : IPulseStore, IAsyncDisposable
+public sealed partial class PostgresStore : ISyncStore, IAsyncDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly string _schema;
@@ -155,6 +155,106 @@ public sealed partial class PostgresStore : IPulseStore, IAsyncDisposable
             LIMIT $3;
             """, cancellationToken, stream, afterStreamPosition, maxCount).ConfigureAwait(false);
         return await ReadEvents(command, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StoredEvent>> AppendReplicated(IReadOnlyList<NewEvent> events, CancellationToken cancellationToken)
+    {
+        if (events.Count == 0)
+        {
+            return [];
+        }
+
+        await EnsureSchema(cancellationToken).ConfigureAwait(false);
+
+        await using var batch = _dataSource.CreateBatch();
+        batch.BatchCommands.Add(BatchCommand("SELECT pg_advisory_xact_lock(hashtextextended($1, 0));", $"pulsesharp.append.{_schema}"));
+        foreach (var newEvent in events)
+        {
+            batch.BatchCommands.Add(BatchCommand(
+                $"""
+                WITH current AS (SELECT COALESCE(MAX(stream_position), 0) AS position FROM {_events} WHERE stream = $1)
+                INSERT INTO {_events} (event_id, stream, stream_position, event_name, data, origin, emitted_at)
+                SELECT $2, $1, current.position + 1, $3, convert_from($4, 'UTF8')::jsonb, $5, $6
+                FROM current
+                ON CONFLICT (event_id) DO NOTHING
+                RETURNING global_position, stream_position;
+                """,
+                newEvent.Stream,
+                newEvent.EventId,
+                newEvent.EventName,
+                newEvent.Data,
+                newEvent.Origin,
+                newEvent.EmittedAt
+            ));
+        }
+
+        var saved = new List<StoredEvent>();
+        await using var reader = await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var newEvent in events)
+        {
+            await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                saved.Add(new StoredEvent(
+                    reader.GetInt64(0),
+                    newEvent.EventId,
+                    newEvent.Stream,
+                    reader.GetInt64(1),
+                    newEvent.EventName,
+                    newEvent.Data,
+                    newEvent.Origin,
+                    newEvent.EmittedAt
+                ));
+            }
+        }
+
+        return saved;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<StoredEvent>> ReadForSync(SyncQuery query, CancellationToken cancellationToken)
+    {
+        await using var command = await Command($"""
+            SELECT global_position, event_id, stream, stream_position, event_name, convert_to(data::text, 'UTF8'), origin, emitted_at
+            FROM {_events}
+            WHERE global_position > $1
+              AND ($2::text IS NULL OR origin = $2::text)
+              AND ($3::text IS NULL OR origin <> $3::text)
+              AND (cardinality($4::text[]) = 0 OR EXISTS (SELECT 1 FROM unnest($4::text[]) AS prefix WHERE left(stream, length(prefix)) = prefix))
+            ORDER BY global_position
+            LIMIT $5;
+            """,
+            cancellationToken,
+            query.AfterPosition,
+            (object?)query.Origin ?? DBNull.Value,
+            (object?)query.ExceptOrigin ?? DBNull.Value,
+            query.StreamPrefixes.ToArray(),
+            query.MaxCount
+        ).ConfigureAwait(false);
+        return await ReadEvents(command, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<long> LoadSyncPosition(string remote, SyncDirection direction, CancellationToken cancellationToken)
+    {
+        await using var command = await Command(
+            $"SELECT position FROM \"{_schema}\".sync_positions WHERE remote = $1 AND direction = $2;",
+            cancellationToken,
+            remote,
+            (short)direction
+        ).ConfigureAwait(false);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is long position ? position : 0;
+    }
+
+    /// <inheritdoc />
+    public Task SaveSyncPosition(string remote, SyncDirection direction, long position, CancellationToken cancellationToken)
+    {
+        return Execute($"""
+            INSERT INTO "{_schema}".sync_positions (remote, direction, position)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (remote, direction) DO UPDATE SET position = excluded.position;
+            """, cancellationToken, remote, (short)direction, position);
     }
 
     /// <inheritdoc />

@@ -59,6 +59,16 @@ internal static class PostgresSchema
                     cancel_requested BOOLEAN     NOT NULL DEFAULT FALSE
                 );
                 CREATE INDEX jobs_due ON "{schema}".jobs (state, run_at);
+                """),
+            (2, $"""
+                CREATE INDEX events_by_origin ON "{schema}".events (origin, global_position);
+
+                CREATE TABLE "{schema}".sync_positions (
+                    remote    TEXT     NOT NULL,
+                    direction SMALLINT NOT NULL,
+                    position  BIGINT   NOT NULL,
+                    PRIMARY KEY (remote, direction)
+                );
                 """)
         ];
     }

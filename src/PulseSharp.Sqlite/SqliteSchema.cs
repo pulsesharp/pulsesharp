@@ -58,6 +58,16 @@ internal static class SqliteSchema
                 lease_until  INTEGER NULL,
                 revision     INTEGER NOT NULL
             );
+            """),
+        (3, """
+            CREATE INDEX pulsesharp_events_by_origin ON pulsesharp_events (origin, global_position);
+
+            CREATE TABLE pulsesharp_sync_positions (
+                remote    TEXT    NOT NULL,
+                direction INTEGER NOT NULL,
+                position  INTEGER NOT NULL,
+                PRIMARY KEY (remote, direction)
+            );
             """)
     ];
 

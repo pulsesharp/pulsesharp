@@ -11,11 +11,77 @@ public abstract class StoreConformanceTests : IDisposable
     private static readonly IReadOnlySet<string> Import = Names("ImportProducts");
     private static readonly CancellationToken None = CancellationToken.None;
 
-    protected abstract IPulseStore Store { get; }
+    protected abstract ISyncStore Store { get; }
 
     public virtual void Dispose()
     {
         GC.SuppressFinalize(this);
+    }
+
+    [Fact]
+    public async Task AppendsReplicatedEventsKeepingTheirIdentity()
+    {
+        await Append("Sale-A", "SaleCompleted");
+        var fromTill = Replicated("Sale-A", "till-2");
+        var other = Replicated("Product-1", "cloud");
+
+        var saved = await Store.AppendReplicated([fromTill, other], None);
+        var stored = await Store.ReadStream("Sale-A", 0, 10, None);
+
+        Assert.Equal([fromTill.EventId, other.EventId], saved.Select(stored => stored.EventId));
+        Assert.Equal(2, saved[0].StreamPosition);
+        Assert.Equal(1, saved[1].StreamPosition);
+        Assert.True(saved[0].GlobalPosition < saved[1].GlobalPosition);
+        Assert.Equal("till-2", stored[1].Origin);
+        Assert.Equal(Now.AddMinutes(-5), stored[1].EmittedAt);
+        Assert.Contains("\"total\":", Encoding.UTF8.GetString(stored[1].Data), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SkipsReplicatedEventsItAlreadyHas()
+    {
+        var first = Replicated("Sale-A", "till-2");
+        var second = Replicated("Sale-A", "till-2");
+        await Store.AppendReplicated([first], None);
+
+        var saved = await Store.AppendReplicated([first, second, second], None);
+
+        Assert.Equal([second.EventId], saved.Select(stored => stored.EventId));
+        Assert.Equal(2, saved[0].StreamPosition);
+        Assert.Equal(2, (await Store.ReadStream("Sale-A", 0, 10, None)).Count);
+        Assert.Empty(await Store.AppendReplicated([], None));
+    }
+
+    [Fact]
+    public async Task ReadsEventsForSyncByOriginAndStreamPrefix()
+    {
+        var mine = await Append("Sale-A", "SaleCompleted");
+        await Store.AppendReplicated([Replicated("Product-1", "cloud"), Replicated("Tenant-7-Price", "cloud")], None);
+        var later = await Append("Product-2", "ProductChanged");
+
+        var push = await Store.ReadForSync(new SyncQuery(0, "till-1", null, [], 100), None);
+        var pull = await Store.ReadForSync(new SyncQuery(0, null, "till-1", ["Tenant-7-"], 100), None);
+        var products = await Store.ReadForSync(new SyncQuery(0, null, null, ["Product-", "Nothing-"], 100), None);
+        var afterMine = await Store.ReadForSync(new SyncQuery(mine.GlobalPosition, "till-1", null, [], 1), None);
+
+        Assert.Equal([mine.EventId, later.EventId], push.Select(stored => stored.EventId));
+        Assert.Equal(["Tenant-7-Price"], pull.Select(stored => stored.Stream));
+        Assert.Equal(["Product-1", "Product-2"], products.Select(stored => stored.Stream));
+        Assert.Equal([later.EventId], afterMine.Select(stored => stored.EventId));
+    }
+
+    [Fact]
+    public async Task RemembersSyncPositionsPerRemoteAndDirection()
+    {
+        Assert.Equal(0, await Store.LoadSyncPosition("cloud", SyncDirection.Push, None));
+
+        await Store.SaveSyncPosition("cloud", SyncDirection.Push, 5, None);
+        await Store.SaveSyncPosition("cloud", SyncDirection.Pull, 40, None);
+        await Store.SaveSyncPosition("cloud", SyncDirection.Push, 9, None);
+
+        Assert.Equal(9, await Store.LoadSyncPosition("cloud", SyncDirection.Push, None));
+        Assert.Equal(40, await Store.LoadSyncPosition("cloud", SyncDirection.Pull, None));
+        Assert.Equal(0, await Store.LoadSyncPosition("other", SyncDirection.Pull, None));
     }
 
     [Fact]
@@ -314,6 +380,11 @@ public abstract class StoreConformanceTests : IDisposable
         return Store.Append(newEvent, expected, null, None);
     }
 
+    private static NewEvent Replicated(string stream, string origin)
+    {
+        return new NewEvent(Guid.NewGuid(), stream, "Replicated", Encoding.UTF8.GetBytes("{\"total\":5}"), origin, Now.AddMinutes(-5));
+    }
+
     private async Task<Guid> AddJob(DateTimeOffset? runAt = null, string data = "{}")
     {
         var job = await Store.AddJob(
@@ -332,7 +403,7 @@ public abstract class StoreConformanceTests : IDisposable
 
 public sealed class InMemoryStoreTests : StoreConformanceTests
 {
-    protected override IPulseStore Store { get; } = new InMemoryStore();
+    protected override ISyncStore Store { get; } = new InMemoryStore();
 }
 
 public sealed class SqliteStoreTests : StoreConformanceTests
@@ -344,7 +415,7 @@ public sealed class SqliteStoreTests : StoreConformanceTests
         Store = new SqliteStore(_database.ConnectionString);
     }
 
-    protected override IPulseStore Store { get; }
+    protected override ISyncStore Store { get; }
 
     public override void Dispose()
     {
@@ -362,7 +433,7 @@ public sealed class PostgresStoreTests : StoreConformanceTests
         Store = new PostgresStore(_schema.ConnectionString, _schema.Name);
     }
 
-    protected override IPulseStore Store { get; }
+    protected override ISyncStore Store { get; }
 
     public override void Dispose()
     {

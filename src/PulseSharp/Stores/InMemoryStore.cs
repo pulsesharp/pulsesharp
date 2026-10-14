@@ -2,10 +2,12 @@ using System.Data.Common;
 
 namespace PulseSharp.Stores;
 
-internal sealed class InMemoryStore : IPulseStore
+internal sealed class InMemoryStore : ISyncStore
 {
     private readonly object _gate = new();
     private readonly List<StoredEvent> _events = [];
+    private readonly HashSet<Guid> _eventIds = [];
+    private readonly Dictionary<(string Remote, SyncDirection Direction), long> _syncPositions = [];
     private readonly Dictionary<string, long> _streamPositions = new(StringComparer.Ordinal);
     private readonly Dictionary<(string HandlerName, string Stream), HandlerCursor> _cursors = [];
     private readonly Dictionary<Guid, StoredJob> _jobs = [];
@@ -44,9 +46,84 @@ internal sealed class InMemoryStore : IPulseStore
             );
 
             _events.Add(stored);
+            _eventIds.Add(stored.EventId);
             _streamPositions[newEvent.Stream] = stored.StreamPosition;
             return Task.FromResult(stored);
         }
+    }
+
+    public Task<IReadOnlyList<StoredEvent>> AppendReplicated(IReadOnlyList<NewEvent> events, CancellationToken cancellationToken)
+    {
+        var saved = new List<StoredEvent>();
+        lock (_gate)
+        {
+            foreach (var newEvent in events)
+            {
+                if (!_eventIds.Add(newEvent.EventId))
+                {
+                    continue;
+                }
+
+                _streamPositions.TryGetValue(newEvent.Stream, out var currentPosition);
+                var stored = new StoredEvent(
+                    GlobalPosition: _events.Count + 1,
+                    EventId: newEvent.EventId,
+                    Stream: newEvent.Stream,
+                    StreamPosition: currentPosition + 1,
+                    EventName: newEvent.EventName,
+                    Data: newEvent.Data,
+                    Origin: newEvent.Origin,
+                    EmittedAt: newEvent.EmittedAt
+                );
+
+                _events.Add(stored);
+                _streamPositions[newEvent.Stream] = stored.StreamPosition;
+                saved.Add(stored);
+            }
+        }
+
+        return Task.FromResult<IReadOnlyList<StoredEvent>>(saved);
+    }
+
+    public Task<IReadOnlyList<StoredEvent>> ReadForSync(SyncQuery query, CancellationToken cancellationToken)
+    {
+        var found = new List<StoredEvent>();
+        lock (_gate)
+        {
+            for (var index = (int)query.AfterPosition; index < _events.Count && found.Count < query.MaxCount; index++)
+            {
+                var stored = _events[index];
+                var matchesOrigin = query.Origin is null || stored.Origin == query.Origin;
+                var matchesExcept = query.ExceptOrigin is null || stored.Origin != query.ExceptOrigin;
+                var matchesStream = query.StreamPrefixes.Count == 0
+                    || query.StreamPrefixes.Any(prefix => stored.Stream.StartsWith(prefix, StringComparison.Ordinal));
+
+                if (matchesOrigin && matchesExcept && matchesStream)
+                {
+                    found.Add(stored);
+                }
+            }
+        }
+
+        return Task.FromResult<IReadOnlyList<StoredEvent>>(found);
+    }
+
+    public Task<long> LoadSyncPosition(string remote, SyncDirection direction, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            return Task.FromResult(_syncPositions.GetValueOrDefault((remote, direction)));
+        }
+    }
+
+    public Task SaveSyncPosition(string remote, SyncDirection direction, long position, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            _syncPositions[(remote, direction)] = position;
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task<IReadOnlyList<StoredEvent>> ReadAfter(
