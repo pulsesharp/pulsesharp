@@ -9,7 +9,9 @@
 
 ---
 
-> **Status: preview.** Events and jobs work with the in-memory, **SQLite** and **PostgreSQL** stores, and devices sync their events with a server. See the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap). The API may change before `1.0`.
+<!-- package readme: everything below this line is also the README on nuget.org, which shows Markdown only. -->
+
+> **Status: preview (`0.5`).** Events and jobs work with the in-memory, **SQLite** and **PostgreSQL** stores, and devices sync their events with a server. See the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap). The API may change before `1.0`.
 
 ## What is PulseSharp?
 
@@ -65,13 +67,13 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 
 - **Device to cloud sync**: `pulse.SyncWithCloud(url, key)` on the device (package `PulseSharp.Sync`), `pulse.UseSyncServer(server => server.AllowNode("till-1", key))` and `app.MapPulseSharpSync()` on the server (package `PulseSharp.Sync.Server`). The device works offline; when online it sends its own events and receives the server's. No duplicates, no echoes, resumable batches, and the server decides which streams each device may receive.
 
-See [`samples/ConsoleSample`](samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them; then an end-of-day job reports its progress.
+See [`samples/ConsoleSample`](https://github.com/pulsesharp/pulsesharp/blob/main/samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them; then an end-of-day job reports its progress.
 
-See [`samples/PosSync`](samples/PosSync/Program.cs): two tills sell while the cloud is down, sync when it comes back, and receive a price change and an oversold warning from the cloud.
+See [`samples/PosSync`](https://github.com/pulsesharp/pulsesharp/blob/main/samples/PosSync/Program.cs): two tills sell while the cloud is down, sync when it comes back, and receive a price change and an oversold warning from the cloud.
 
 ## Performance
 
-In-memory store, one machine, BenchmarkDotNet short run ([`benchmarks/`](benchmarks/PulseSharp.Benchmarks/EventBenchmarks.cs)):
+In-memory store, one machine, BenchmarkDotNet short run ([`benchmarks/`](https://github.com/pulsesharp/pulsesharp/blob/main/benchmarks/PulseSharp.Benchmarks/EventBenchmarks.cs)):
 
 | Per event | Time | Allocated |
 |---|---|---|
@@ -110,8 +112,8 @@ Numbers for the PostgreSQL store will follow with that store.
 - 📖 **[Documentation](https://pulsesharp.github.io/pulsesharp/)**: guides, concepts and the API reference
 - [Getting started](https://pulsesharp.github.io/pulsesharp/guide/getting-started): your first event and job in five minutes
 - [Vision and roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision)
-- [Contributing](CONTRIBUTING.md)
+- [Contributing](https://github.com/pulsesharp/pulsesharp/blob/main/CONTRIBUTING.md)
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/pulsesharp/pulsesharp/blob/main/LICENSE)

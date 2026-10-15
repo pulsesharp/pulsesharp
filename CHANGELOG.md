@@ -4,6 +4,8 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.5.0-alpha] - 2026-10-15
+
 ### Added
 
 - A simpler way in, on top of the same engine:
@@ -17,12 +19,14 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
   - `PulseSharp.Sync` (the device side, no dependencies beyond PulseSharp): `pulse.SyncWithCloud(server, apiKey)`, or `pulse.UseSync(sync => …)` with `PullStreams`, `Push`, `Pull`, `Interval`, `BatchSize`, `Authorize` and `HttpHandler`. Sends the events this node emitted and receives everyone else's, in resumable batches. Offline is normal: the wait grows up to a minute and sync catches up later. `IPulseSync` shows the status and syncs on request (`SyncNow`).
   - `PulseSharp.Sync.Server` (ASP.NET Core): `pulse.UseSyncServer(server => …)` with `AllowNode(node, key, pullStreams)`, `NodeFrom(user => …)` and `PullFilter(node => …)`, and `app.MapPulseSharpSync()`. A node may only send its own events and only receive the streams it is allowed; it never gets its own events back.
   - Protocol version 1 over HTTP and JSON (`info`, `push`, `pull`).
+  - `samples/PosSync`: two tills sell while the cloud is down, sync when it comes back, and receive a price change and an oversold warning.
 - `PulseSharpBuilder.Services`, so extension packages can register their services.
 - Store contract for sync: `ISyncStore` (`AppendReplicated`, `ReadForSync`, `LoadSyncPosition`, `SaveSyncPosition`), `SyncQuery` and `SyncDirection`, implemented by the in-memory, SQLite and PostgreSQL stores. Replicated events keep their id, origin and time; an event already in the store is skipped. New conformance tests cover it.
 
 ### Changed
 
 - **Breaking:** the rarely changed settings moved to `pulse.Advanced`: `PollInterval`, `MaxParallelStreams`, `MaxParallelJobs`, `JobLease`, `HandlerLease` and `JsonOptions`. `Node`, `MaxAttempts` and `RetryDelay` stay on `pulse`.
+- The README on nuget.org is plain Markdown now (it showed raw HTML), with working links, and the packages' project website is the docs site.
 - SQLite schema version 3 and PostgreSQL schema version 2 add a sync position table and an index on the event origin. They are applied on start.
 
 ## [0.4.0-alpha] - 2026-10-13
@@ -94,7 +98,8 @@ First preview. Events only, with the in-memory store.
 
 - `IPulse.Enqueue` throws `NotSupportedException`. Jobs arrive in 0.2.
 
-[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.4.0-alpha...HEAD
+[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.5.0-alpha...HEAD
+[0.5.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.4.0-alpha...v0.5.0-alpha
 [0.4.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.2.0-alpha...v0.3.0-alpha
 [0.2.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.1.0-alpha...v0.2.0-alpha

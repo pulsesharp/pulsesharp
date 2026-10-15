@@ -14,14 +14,14 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Package">
-    <VersionPrefix>0.4.0</VersionPrefix>
+    <VersionPrefix>0.5.0</VersionPrefix>
     <VersionSuffix>dev</VersionSuffix>
     <Authors>Waqas Ahmad</Authors>
     <Company>PulseSharp</Company>
     <Product>PulseSharp</Product>
     <Copyright>Copyright (c) 2026 PulseSharp</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/pulsesharp/pulsesharp</PackageProjectUrl>
+    <PackageProjectUrl>https://pulsesharp.github.io/pulsesharp/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/pulsesharp/pulsesharp.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageIcon>icon.png</PackageIcon>
@@ -36,7 +36,28 @@
 
   <ItemGroup Condition="'$(IsPackable)' == 'true'">
     <None Include="$(MSBuildThisFileDirectory)assets/brand/icon-128.png" Pack="true" PackagePath="icon.png" Visible="false" />
-    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
+
+  <PropertyGroup Label="Package readme">
+    <BeforePack>$(BeforePack);PreparePackageReadme</BeforePack>
+    <PackageReadmeMarker>&lt;!-- package readme:</PackageReadmeMarker>
+  </PropertyGroup>
+
+  <Target Name="PreparePackageReadme" Condition="'$(IsPackable)' == 'true'">
+    <PropertyGroup>
+      <_FullReadme>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)README.md'))</_FullReadme>
+      <_MarkerAt>$(_FullReadme.IndexOf('$(PackageReadmeMarker)'))</_MarkerAt>
+    </PropertyGroup>
+    <Error Condition="$(_MarkerAt) &lt; 0" Text="README.md must contain the line that starts with '$(PackageReadmeMarker)'." />
+    <PropertyGroup>
+      <_AfterMarker>$(_FullReadme.Substring($(_MarkerAt)))</_AfterMarker>
+      <_PackageReadme>$(_AfterMarker.Substring($([MSBuild]::Add($(_AfterMarker.IndexOf('-->')), 3))).Trim())</_PackageReadme>
+      <_PackageReadmeFile>$(IntermediateOutputPath)package-readme/README.md</_PackageReadmeFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_PackageReadmeFile)" Lines="$([MSBuild]::Escape($(_PackageReadme)))" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <None Include="$(_PackageReadmeFile)" Pack="true" PackagePath="/" Visible="false" />
+    </ItemGroup>
+  </Target>
 
 </Project>
