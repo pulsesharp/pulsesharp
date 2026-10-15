@@ -439,3 +439,5 @@ docs/reference/abstractions.md
 docs/reference/core.md
 docs/reference/sqlite.md
 docs/reference/postgresql.md
+docs/reference/sync.md
+docs/reference/sync-server.md

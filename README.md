@@ -9,7 +9,7 @@
 
 ---
 
-> **Status: preview (`0.4`).** Events and jobs work with the in-memory, **SQLite** and **PostgreSQL** stores. Device-to-cloud sync is coming (see the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap)). The API may change before `1.0`.
+> **Status: preview.** Events and jobs work with the in-memory, **SQLite** and **PostgreSQL** stores, and devices sync their events with a server. See the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap). The API may change before `1.0`.
 
 ## What is PulseSharp?
 
@@ -63,6 +63,8 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - **PostgreSQL store**: `pulse.UsePostgreSql(connectionString)` (package `PulseSharp.PostgreSql`, schema `pulsesharp` by default). Run several app instances on one database: each handler is delivered by one instance at a time, jobs are claimed with `SKIP LOCKED`, and `IPulseControl` works from any instance.
 - **Jobs**: `Enqueue` now, `EnqueueIn` / `EnqueueAt` later, one handler per job type, retries with a growing delay, progress (`context.Report`), cancel (the handler's token), `Advanced.MaxParallelJobs` (default 4), and leases so a job left behind by a stopped app instance runs again. `IPulseControl` reads, lists, cancels and retries jobs.
 
+- **Device to cloud sync**: `pulse.SyncWithCloud(url, key)` on the device (package `PulseSharp.Sync`), `pulse.UseSyncServer(server => server.AllowNode("till-1", key))` and `app.MapPulseSharpSync()` on the server (package `PulseSharp.Sync.Server`). The device works offline; when online it sends its own events and receives the server's. No duplicates, no echoes, resumable batches, and the server decides which streams each device may receive.
+
 See [`samples/ConsoleSample`](samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them; then an end-of-day job reports its progress.
 
 ## Performance
@@ -96,7 +98,8 @@ Numbers for the PostgreSQL store will follow with that store.
 | `PulseSharp` | The engine, with an in-memory store built in | Preview |
 | `PulseSharp.Sqlite` | SQLite store, for desktop and mobile apps | Preview |
 | `PulseSharp.PostgreSql` | PostgreSQL store, for servers and several app instances | Preview |
-| `PulseSharp.Sync` | Device ↔ cloud sync | Planned (0.5) |
+| `PulseSharp.Sync` | Device to cloud sync: the device side | Preview |
+| `PulseSharp.Sync.Server` | Device to cloud sync: the ASP.NET Core endpoint | Preview |
 | `PulseSharp.Monitor` | Optional web UI | Planned (after 1.0) |
 
 

@@ -44,7 +44,8 @@ public sealed class StartDailyExport(IPulse pulse) : IEventHandler<DayClosed>
 | `PulseSharp` | The engine, with an in-memory store built in | Preview |
 | `PulseSharp.Sqlite` | SQLite store, for desktop and mobile apps | Preview |
 | `PulseSharp.PostgreSql` | PostgreSQL store, for servers and several app instances | Preview |
-| `PulseSharp.Sync` | Device ↔ cloud sync | Planned (0.5) |
+| `PulseSharp.Sync` | Device to cloud sync: the device side. See [Sync](/guide/sync) | Preview |
+| `PulseSharp.Sync.Server` | Device to cloud sync: the ASP.NET Core endpoint | Preview |
 | `PulseSharp.Monitor` | Optional web UI | Planned (after 1.0) |
 
 ::: tip Reference only the contracts from libraries

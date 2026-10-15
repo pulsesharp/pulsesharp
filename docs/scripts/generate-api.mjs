@@ -7,7 +7,9 @@ const packages = [
   { id: 'PulseSharp.Abstractions', page: 'abstractions', intro: 'Contracts for handlers and libraries. No dependencies.' },
   { id: 'PulseSharp', page: 'core', intro: 'The engine: setup, the in-memory store, the control API and the store contract.' },
   { id: 'PulseSharp.Sqlite', page: 'sqlite', intro: 'The SQLite store.' },
-  { id: 'PulseSharp.PostgreSql', page: 'postgresql', intro: 'The PostgreSQL store.' }
+  { id: 'PulseSharp.PostgreSql', page: 'postgresql', intro: 'The PostgreSQL store.' },
+  { id: 'PulseSharp.Sync', page: 'sync', intro: 'Device to cloud sync: the client that runs on the device.' },
+  { id: 'PulseSharp.Sync.Server', page: 'sync-server', intro: 'Device to cloud sync: the ASP.NET Core endpoint on the server.' }
 ]
 
 const builtInNames = {

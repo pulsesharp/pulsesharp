@@ -38,7 +38,7 @@ features:
     details: Desktop, web, worker or console - anything that uses the .NET Generic Host. No ASP.NET Core in the core packages. Native AOT friendly.
   - icon: ☁️
     title: Device to cloud
-    details: Built for offline-first apps. Events carry a global id and their origin node, ready for device ↔ cloud sync (coming in 0.5).
+    details: Built for offline-first apps. A device keeps working without internet and syncs its events with the server when it is back online - two lines of setup.
 ---
 
 <div class="vp-doc" style="max-width: 1152px; margin: 64px auto 0; padding: 0 24px;">
@@ -62,7 +62,7 @@ await pulse.Enqueue(new ExportReport(today));
 ```
 
 ::: warning Preview
-PulseSharp is in preview. Events and jobs work with the in-memory, SQLite and PostgreSQL stores today; device-to-cloud sync is next on the [roadmap](/concepts/vision#roadmap). The API may change before 1.0.
+PulseSharp is in preview. Events, jobs and device to cloud sync work with the in-memory, SQLite and PostgreSQL stores today; see the [roadmap](/concepts/vision#roadmap). The API may change before 1.0.
 :::
 
 </div>
