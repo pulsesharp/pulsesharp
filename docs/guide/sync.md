@@ -46,6 +46,10 @@ app.Run();
 
 `AllowNode` gives each device a name and a secret key. Keep the keys in configuration, not in source code.
 
+::: tip Try it
+[`samples/PosSync`](https://github.com/pulsesharp/pulsesharp/tree/main/samples/PosSync) runs two tills and a cloud in one console app: the tills sell while the cloud is down, catch up when it starts, and receive a price change and an oversold warning. Run it with `dotnet run --project samples/PosSync`.
+:::
+
 ## How it works
 
 - **Every app has a name**, `pulse.Node`. Each event remembers the node that emitted it.

@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ConsoleSample/ConsoleSample.csproj" />
+    <Project Path="samples/PosSync/PosSync.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/PulseSharp.Abstractions/PulseSharp.Abstractions.csproj" />

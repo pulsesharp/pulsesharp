@@ -67,6 +67,8 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 
 See [`samples/ConsoleSample`](samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them; then an end-of-day job reports its progress.
 
+See [`samples/PosSync`](samples/PosSync/Program.cs): two tills sell while the cloud is down, sync when it comes back, and receive a price change and an oversold warning from the cloud.
+
 ## Performance
 
 In-memory store, one machine, BenchmarkDotNet short run ([`benchmarks/`](benchmarks/PulseSharp.Benchmarks/EventBenchmarks.cs)):

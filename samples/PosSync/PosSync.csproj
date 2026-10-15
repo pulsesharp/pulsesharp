@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PulseSharp.Sqlite\PulseSharp.Sqlite.csproj" />
+    <ProjectReference Include="..\..\src\PulseSharp.Sync\PulseSharp.Sync.csproj" />
+    <ProjectReference Include="..\..\src\PulseSharp.Sync.Server\PulseSharp.Sync.Server.csproj" />
+  </ItemGroup>
+
+</Project>
