@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>PulseSharp.Sync</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Device to cloud sync for PulseSharp: the device keeps working offline and sends its events to the server, and receives the server's events, when it is online. No dependencies beyond PulseSharp.</Description>
+    <PackageTags>$(PackageTags);sync;offline-first;desktop;pos</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PulseSharp\PulseSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PulseSharp.Tests" />
+  </ItemGroup>
+
+</Project>

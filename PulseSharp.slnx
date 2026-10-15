@@ -9,6 +9,8 @@
     <Project Path="src/PulseSharp.Abstractions/PulseSharp.Abstractions.csproj" />
     <Project Path="src/PulseSharp.PostgreSql/PulseSharp.PostgreSql.csproj" />
     <Project Path="src/PulseSharp.Sqlite/PulseSharp.Sqlite.csproj" />
+    <Project Path="src/PulseSharp.Sync.Server/PulseSharp.Sync.Server.csproj" />
+    <Project Path="src/PulseSharp.Sync/PulseSharp.Sync.csproj" />
     <Project Path="src/PulseSharp/PulseSharp.csproj" />
   </Folder>
   <Folder Name="/tests/">

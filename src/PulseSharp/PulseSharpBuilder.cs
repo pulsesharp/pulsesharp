@@ -30,6 +30,17 @@ public sealed class PulseSharpBuilder
     }
 
     /// <summary>
+    /// The service collection PulseSharp is added to. Extension packages, such as sync, register their services here.
+    /// </summary>
+    public IServiceCollection Services
+    {
+        get
+        {
+            return _services;
+        }
+    }
+
+    /// <summary>
     /// The name of this app instance, stored with every event it emits, for example <c>till-1</c> or <c>cloud</c>.
     /// The default is the machine name.
     /// </summary>

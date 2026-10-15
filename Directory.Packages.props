@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Tests">
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="8.0.31" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

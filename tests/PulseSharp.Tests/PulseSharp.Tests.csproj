@@ -15,9 +15,12 @@
     <ProjectReference Include="..\..\src\PulseSharp\PulseSharp.csproj" />
     <ProjectReference Include="..\..\src\PulseSharp.Sqlite\PulseSharp.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\PulseSharp.PostgreSql\PulseSharp.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\src\PulseSharp.Sync\PulseSharp.Sync.csproj" />
+    <ProjectReference Include="..\..\src\PulseSharp.Sync.Server\PulseSharp.Sync.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />

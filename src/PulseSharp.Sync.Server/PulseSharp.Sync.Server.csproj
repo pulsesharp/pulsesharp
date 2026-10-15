@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>PulseSharp.Sync.Server</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>The server side of PulseSharp sync: an ASP.NET Core endpoint that receives events from devices and sends them the server's events.</Description>
+    <PackageTags>$(PackageTags);sync;aspnetcore;server</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PulseSharp\PulseSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PulseSharp.Tests" />
+  </ItemGroup>
+
+</Project>
