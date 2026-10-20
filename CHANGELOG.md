@@ -4,7 +4,9 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-The API review before 1.0: names made consistent, plus two small additions. Renames are listed old → new.
+## [0.6.0-alpha] - 2026-10-20
+
+Getting ready for 1.0: a consistent API, finished jobs cleaned up, instant wake-ups between PostgreSQL app instances, and the new `PulseSharp.Testing` package. Renames are listed old → new.
 
 ### Added
 
@@ -123,7 +125,8 @@ First preview. Events only, with the in-memory store.
 
 - `IPulse.Enqueue` throws `NotSupportedException`. Jobs arrive in 0.2.
 
-[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.5.0-alpha...HEAD
+[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.6.0-alpha...HEAD
+[0.6.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.5.0-alpha...v0.6.0-alpha
 [0.5.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.4.0-alpha...v0.5.0-alpha
 [0.4.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.2.0-alpha...v0.3.0-alpha
