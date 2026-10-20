@@ -24,11 +24,11 @@ namespace PulseSharp.Testing;
 /// await pulse.Emit(new SaleCompleted(1, 25m));
 /// await pulse.WaitUntilIdle();
 ///
-/// pulse.Emitted&lt;StockWentNegative&gt;().ShouldHaveOne(e => e.Sku == "coffee");
-/// pulse.ShouldHaveNoFailures();
+/// pulse.Emitted(new StockWentNegative("coffee"));
+/// pulse.NothingFailed();
 /// </code>
 /// </example>
-public sealed class PulseTestHost : IPulse, IAsyncDisposable
+public sealed class PulseTestHost : IPulse, IRecordedPulse, IAsyncDisposable
 {
     private const int PageSize = 1000;
     private const int MaxJobs = 100_000;
@@ -122,8 +122,8 @@ public sealed class PulseTestHost : IPulse, IAsyncDisposable
 
     /// <summary>
     /// Sets up the starting state: saves events to a stream, then waits until the handlers have handled them.
-    /// These events, and what the handlers do with them, are not part of <see cref="Emitted{TEvent}"/> and
-    /// <see cref="Enqueued{TJob}"/> afterwards.
+    /// These events, and what the handlers do with them, are not part of <see cref="Events"/> and <see cref="Jobs"/>
+    /// afterwards.
     /// </summary>
     /// <param name="stream">The stream, for example <c>"Sale-1"</c>.</param>
     /// <param name="events">The events, in order.</param>
@@ -147,7 +147,7 @@ public sealed class PulseTestHost : IPulse, IAsyncDisposable
 
     /// <summary>
     /// Waits until every handler has handled every event, no job is running or due, and nothing is waiting for a retry.
-    /// A handler that failed for good counts as done: check that with <see cref="ShouldHaveNoFailures"/>.
+    /// A handler that failed for good counts as done: check that with <see cref="NothingFailed"/>.
     /// </summary>
     /// <param name="timeout">How long to wait. The default is 10 seconds.</param>
     /// <returns>A task that completes when the engine is idle.</returns>
@@ -179,39 +179,36 @@ public sealed class PulseTestHost : IPulse, IAsyncDisposable
     }
 
     /// <summary>
-    /// The events of one type emitted since the start or the last <c>Given</c>, by the test or by handlers, in order.
-    /// Call <see cref="WaitUntilIdle"/> first to include what handlers emit.
+    /// The events emitted since the start or the last <c>Given</c>, by the test or by handlers, in order. Call
+    /// <see cref="WaitUntilIdle"/> first to include what handlers emit.
     /// </summary>
-    /// <typeparam name="TEvent">The event type.</typeparam>
-    /// <returns>The events, ready to check.</returns>
-    public EmittedEvents<TEvent> Emitted<TEvent>()
+    public IReadOnlyList<EmittedEvent> Events
     {
-        var eventName = _names.Events.NameOf(typeof(TEvent));
-        var events = RunNow(() => ReadAllEvents(_eventsBefore));
-        var items = events
-            .Where(stored => stored.EventName == eventName)
-            .Select(stored => new RecordedItem<TEvent>(_json.Deserialize<TEvent>(stored.Data), EmittedEvents<TEvent>.StreamText(stored.Stream)))
-            .ToList();
-        var others = Summary.Others("events", events.Where(stored => stored.EventName != eventName).Select(stored => stored.EventName));
-        return new EmittedEvents<TEvent>(new Recorded<TEvent>(typeof(TEvent).Name, "emitted", items, string.Empty, others));
+        get
+        {
+            return RunNow(() => ReadAllEvents(_eventsBefore))
+                .Select(stored => new EmittedEvent(ToObject(_names.Events, stored.EventName, stored.Data), stored.Stream, new EmitOptions()))
+                .ToList();
+        }
     }
 
     /// <summary>
-    /// The jobs of one type enqueued since the start or the last <c>Given</c>, by the test or by handlers, in order,
-    /// whatever their state now. Call <see cref="WaitUntilIdle"/> first to include what handlers enqueue.
+    /// The jobs enqueued since the start or the last <c>Given</c>, by the test or by handlers, in order, whatever their
+    /// state now. Call <see cref="WaitUntilIdle"/> first to include what handlers enqueue.
     /// </summary>
-    /// <typeparam name="TJob">The job type.</typeparam>
-    /// <returns>The jobs, ready to check.</returns>
-    public EnqueuedJobs<TJob> Enqueued<TJob>()
+    public IReadOnlyList<EnqueuedJob> Jobs
     {
-        var jobName = _names.Jobs.NameOf(typeof(TJob));
-        var jobs = RunNow(ReadAllJobs).Where(job => !_jobsBefore.Contains(job.JobId)).ToList();
-        var items = jobs
-            .Where(job => job.JobName == jobName)
-            .Select(job => new RecordedItem<TJob>(_json.Deserialize<TJob>(job.Data), $" ({job.State})"))
-            .ToList();
-        var others = Summary.Others("jobs", jobs.Where(job => job.JobName != jobName).Select(job => job.JobName));
-        return new EnqueuedJobs<TJob>(new Recorded<TJob>(typeof(TJob).Name, "enqueued", items, string.Empty, others));
+        get
+        {
+            return RunNow(ReadAllJobs)
+                .Where(job => !_jobsBefore.Contains(job.JobId))
+                .Select(job => new EnqueuedJob(
+                    ToObject(_names.Jobs, job.JobName, job.Data),
+                    job.RunAt > job.EnqueuedAt ? job.RunAt : null,
+                    new EnqueueOptions()
+                ))
+                .ToList();
+        }
     }
 
     /// <summary>
@@ -219,7 +216,7 @@ public sealed class PulseTestHost : IPulse, IAsyncDisposable
     /// would go unnoticed in a test.
     /// </summary>
     /// <exception cref="PulseAssertionException">Something failed. The message shows each failure and its error.</exception>
-    public void ShouldHaveNoFailures()
+    public void NothingFailed()
     {
         var failures = RunNow(ReadFailures);
         if (failures.Count > 0)
@@ -383,6 +380,17 @@ public sealed class PulseTestHost : IPulse, IAsyncDisposable
         var jobs = await _store.GetJobs(JobState.Failed, MaxJobs, CancellationToken.None).ConfigureAwait(false);
         failures.AddRange(jobs.Select(job => $"  Job {job.JobName} {job.JobId} failed: {FirstLine(job.LastError)}"));
         return failures;
+    }
+
+    private object ToObject(TypeNames names, string name, byte[] data)
+    {
+        if (names.TypeOf(name) is { } type)
+        {
+            return _json.Deserialize(data, type);
+        }
+
+        using var document = System.Text.Json.JsonDocument.Parse(data);
+        return document.RootElement.Clone();
     }
 
     private static string FirstLine(string? text)

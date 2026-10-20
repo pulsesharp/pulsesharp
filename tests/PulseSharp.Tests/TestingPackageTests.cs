@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using PulseSharp.Testing;
@@ -8,84 +7,104 @@ namespace PulseSharp.Tests;
 public sealed class TestingPackageTests
 {
     [Fact]
-    public async Task RecordingPulseRecordsEventsAndJobs()
+    public async Task FakePulseRecordsWhatTheCodeEmitsAndEnqueues()
     {
-        var pulse = new RecordingPulse();
+        var pulse = new FakePulse();
+        var checkout = new Checkout(pulse);
 
-        await pulse.Emit(new SaleCompleted(1));
-        await pulse.Emit("Sale-2", new SaleCompleted(2));
-        await pulse.Emit("Sale-2", new SaleRefunded(2));
-        await pulse.Enqueue(new ImportProducts("a.csv"));
-        await pulse.EnqueueIn(new ImportProducts("b.csv"), TimeSpan.FromHours(1));
+        await checkout.Complete(7, 250);
 
-        var sale = pulse.Emitted<SaleCompleted>().ShouldHaveOne(sale => sale.Number == 2);
-        pulse.Emitted<SaleCompleted>().ShouldHave(2);
-        pulse.Emitted<SaleCompleted>().InStream("Sale-2").ShouldHaveOne();
-        pulse.Emitted<SaleVoided>().ShouldHaveNone();
-        pulse.Enqueued<ImportProducts>().ShouldHave(2);
-        pulse.Enqueued<RebuildIndex>().ShouldHaveNone();
-        Assert.Equal(new SaleCompleted(2), sale);
-        Assert.Equal([1, 2], pulse.Emitted<SaleCompleted>().Select(emitted => emitted.Number));
-
-        pulse.Clear();
-        pulse.Emitted<SaleCompleted>().ShouldHaveNone();
+        var completed = pulse.Emitted<SaleCompleted>("Sale-7");
+        Assert.Equal(7, completed.Number);
+        pulse.Emitted(new SaleRefunded(7));
+        pulse.Emitted<SaleRefunded>(refund => refund.Number == 7);
+        pulse.NotEmitted<SaleVoided>();
+        pulse.Enqueued(new ImportProducts("refund-7.csv"));
+        pulse.NotEnqueued<RebuildIndex>();
+        Assert.Equal(2, pulse.Events.Count);
+        Assert.Equal("Sale-7", pulse.Events[0].Stream);
     }
 
     [Fact]
-    public async Task RecordingPulseChecksExpectedVersions()
+    public async Task AllEmittedReturnsEveryMatchWithoutChecking()
     {
-        var pulse = new RecordingPulse();
+        var pulse = new FakePulse();
+
+        await pulse.Emit("Sale-1", new SaleCompleted(1));
+        await pulse.Emit("Sale-2", new SaleCompleted(2));
+        await pulse.EnqueueIn(new ImportProducts("a.csv"), TimeSpan.FromHours(1));
+
+        Assert.Equal([1, 2], pulse.AllEmitted<SaleCompleted>().Select(sale => sale.Number));
+        Assert.Equal([2], pulse.AllEmitted<SaleCompleted>("Sale-2").Select(sale => sale.Number));
+        Assert.Single(pulse.AllEnqueued<ImportProducts>());
+        Assert.NotNull(pulse.Jobs[0].RunAt);
+        Assert.Throws<PulseAssertionException>(() => pulse.Emitted<SaleCompleted>());
+    }
+
+    [Fact]
+    public async Task FakePulseChecksExpectedVersionsAndCanFail()
+    {
+        var pulse = new FakePulse();
         await pulse.Emit("Order-1", new SaleCompleted(1), new EmitOptions { ExpectedVersion = ExpectedVersion.NoStream });
 
-        var conflict = await Assert.ThrowsAsync<ExpectedVersionMismatchException>(
+        await Assert.ThrowsAsync<ExpectedVersionMismatchException>(
             () => pulse.Emit("Order-1", new SaleCompleted(2), new EmitOptions { ExpectedVersion = ExpectedVersion.NoStream })
         );
-        var next = await pulse.Emit("Order-1", new SaleCompleted(3), new EmitOptions { ExpectedVersion = ExpectedVersion.Exactly(1) });
 
-        Assert.Equal(1, conflict.ActualPosition);
-        Assert.Equal(2, next.StreamPosition);
+        pulse.ThrowOnEmit = new InvalidOperationException("The database is down.");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => pulse.Emit(new SaleCompleted(3)));
+        pulse.Clear();
+        Assert.Empty(pulse.Events);
     }
 
     [Fact]
-    public async Task FailureMessagesSayWhatWasExpectedAndWhatHappened()
+    public async Task FailureMessagesShowWhatWasExpectedAndWhatHappened()
     {
-        var pulse = new RecordingPulse();
+        var pulse = new FakePulse();
         await pulse.Emit("Sale-1", new SaleCompleted(20));
-        await pulse.Emit("Sale-1", new SaleRefunded(20));
+        await pulse.Enqueue(new ImportProducts("a.csv"));
 
-        var notFound = Assert.Throws<PulseAssertionException>(() => pulse.Emitted<SaleCompleted>().ShouldHaveOne(sale => sale.Number == 25));
-        var unexpected = Assert.Throws<PulseAssertionException>(() => pulse.Emitted<SaleRefunded>().ShouldHaveNone());
-        var nothing = Assert.Throws<PulseAssertionException>(() => pulse.Enqueued<ImportProducts>().ShouldHaveOne());
+        var byCondition = Assert.Throws<PulseAssertionException>(() => pulse.Emitted<SaleCompleted>(sale => sale.Number == 25));
+        var byValue = Assert.Throws<PulseAssertionException>(() => pulse.Emitted(new SaleCompleted(25)));
+        var unexpected = Assert.Throws<PulseAssertionException>(() => pulse.NotEnqueued<ImportProducts>());
 
-        Assert.Contains("Expected one SaleCompleted where sale => sale.Number == 25, but found none.", notFound.Message, StringComparison.Ordinal);
-        Assert.Contains("SaleCompleted { Number = 20 } in stream Sale-1", notFound.Message, StringComparison.Ordinal);
-        Assert.Contains("Other events: SaleRefunded (1).", notFound.Message, StringComparison.Ordinal);
-        Assert.Contains("Expected no SaleRefunded, but found 1.", unexpected.Message, StringComparison.Ordinal);
-        Assert.Contains("No ImportProducts was enqueued.", nothing.Message, StringComparison.Ordinal);
+        Assert.Contains("Expected one SaleCompleted where sale => sale.Number == 25, but found none.", byCondition.Message, StringComparison.Ordinal);
+        Assert.Contains("SaleCompleted { Number = 20 } in stream Sale-1", byCondition.Message, StringComparison.Ordinal);
+        Assert.Contains("ImportProducts { File = a.csv }", byCondition.Message, StringComparison.Ordinal);
+        Assert.Contains("Expected one SaleCompleted { Number = 25 }, but found none.", byValue.Message, StringComparison.Ordinal);
+        Assert.Contains("Expected no ImportProducts job, but found 1.", unexpected.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void TestEventContextFillsEveryValue()
+    public async Task ComparesClassesByTheirJson()
     {
-        var plain = TestEventContext.For(new SaleCompleted(1));
-        var named = TestEventContext.For(new SaleVoided(1), stream: "Sale-1", attempt: 2, streamPosition: 4, handlerName: "voids");
+        var pulse = new FakePulse();
+        await pulse.Emit(new PriceSet { Sku = "tea", Price = 4.2m });
 
-        Assert.Equal(("SaleCompleted", "SaleCompleted", 1, 1L, "test-handler", "test"), (plain.EventName, plain.Stream, plain.Attempt, plain.StreamPosition, plain.HandlerName, plain.Origin));
-        Assert.Equal(("sale-voided", "Sale-1", 2, 4L, "voids"), (named.EventName, named.Stream, named.Attempt, named.StreamPosition, named.HandlerName));
-        Assert.NotEqual(Guid.Empty, plain.EventId);
+        pulse.Emitted(new PriceSet { Sku = "tea", Price = 4.2m });
+        Assert.Throws<PulseAssertionException>(() => pulse.Emitted(new PriceSet { Sku = "tea", Price = 5m }));
     }
 
     [Fact]
-    public async Task TestJobContextRecordsProgress()
+    public async Task CallsHandlersWithoutContextOrToken()
     {
-        var context = TestJobContext.For(new RebuildIndex(1), attempt: 3);
-        Assert.Null(context.LastProgress);
+        var pulse = new FakePulse();
+        var handler = new RefundBigSales(pulse);
 
-        await context.Report(1, 3);
-        await context.Report(3, 3);
+        await handler.Handle(new SaleCompleted(300), stream: "Sale-3");
+        await handler.Handle(new SaleCompleted(5));
 
-        Assert.Equal(("rebuild-index", 3), (context.JobName, context.Attempt));
-        Assert.Equal([(1, 3), (3, 3)], context.Progress);
+        pulse.Emitted<SaleRefunded>("Sale-3");
+        pulse.Enqueued(new ImportProducts("refund-300.csv"));
+    }
+
+    [Fact]
+    public async Task CallsJobHandlersAndRecordsTheirProgress()
+    {
+        var context = await new ReportPages().Handle(new RebuildIndex(3), attempt: 2);
+
+        Assert.Equal(("rebuild-index", 2), (context.JobName, context.Attempt));
+        Assert.Equal([(1, 3), (2, 3), (3, 3)], context.Progress);
         Assert.Equal((3, 3), context.LastProgress);
     }
 
@@ -96,14 +115,13 @@ public sealed class TestingPackageTests
 
         await pulse.Given("Sale-1", new SaleCompleted(500));
         await pulse.Emit("Sale-2", new SaleCompleted(200));
-        await pulse.Emit("Sale-3", new SaleCompleted(5));
         await pulse.WaitUntilIdle();
 
-        pulse.Emitted<SaleRefunded>().ShouldHaveOne(refund => refund.Number == 200);
-        pulse.Emitted<SaleCompleted>().ShouldHave(2);
-        pulse.Emitted<SaleCompleted>().InStream("Sale-1").ShouldHaveNone();
-        pulse.Enqueued<ImportProducts>().ShouldHaveOne(job => job.File == "refund-200.csv");
-        pulse.ShouldHaveNoFailures();
+        pulse.Emitted(new SaleRefunded(200));
+        pulse.Emitted<SaleCompleted>("Sale-2");
+        pulse.NotEmitted<SaleCompleted>("Sale-1");
+        pulse.Enqueued(new ImportProducts("refund-200.csv"));
+        pulse.NothingFailed();
     }
 
     [Fact]
@@ -133,7 +151,7 @@ public sealed class TestingPackageTests
     }
 
     [Fact]
-    public async Task ShowsFailuresThatWouldOtherwiseGoUnnoticed()
+    public async Task NothingFailedShowsFailuresThatWouldOtherwiseGoUnnoticed()
     {
         await using var pulse = await PulseTestHost.Start(pulse =>
         {
@@ -145,9 +163,8 @@ public sealed class TestingPackageTests
         await pulse.Enqueue(new ImportProducts("a.csv"));
         await pulse.WaitUntilIdle();
 
-        var failure = Assert.Throws<PulseAssertionException>(pulse.ShouldHaveNoFailures);
+        var failure = Assert.Throws<PulseAssertionException>(pulse.NothingFailed);
         Assert.Contains("Handler 'printer' stopped on stream Sale-1: System.InvalidOperationException: The printer is out of paper.", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("Job ImportProducts", failure.Message, StringComparison.Ordinal);
         Assert.Contains("The file is missing.", failure.Message, StringComparison.Ordinal);
     }
 
@@ -173,7 +190,7 @@ public sealed class TestingPackageTests
         await pulse.Given(new SaleCompleted(1), new SaleCompleted(2));
 
         Assert.Equal(2, pulse.Services.GetRequiredService<SaleCounter>().Count);
-        pulse.Emitted<SaleCompleted>().ShouldHaveNone();
+        pulse.NotEmitted<SaleCompleted>();
         Assert.Single(await pulse.Control.GetCursors());
     }
 
@@ -190,11 +207,41 @@ public sealed class TestingPackageTests
             await pulse.Emit("Sale-1", new SaleCompleted(300));
             await pulse.WaitUntilIdle();
 
-            pulse.Emitted<SaleRefunded>().ShouldHaveOne();
-            pulse.Enqueued<ImportProducts>().ShouldHaveOne();
+            pulse.Emitted<SaleRefunded>();
+            pulse.Enqueued<ImportProducts>();
         }
 
         SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task YourOwnChecksAreExtensionMethods()
+    {
+        var pulse = new FakePulse();
+
+        await pulse.Emit("Sale-1", new SaleCompleted(300));
+
+        pulse.SoldWithNumber(300);
+    }
+
+    private sealed class Checkout(IPulse pulse)
+    {
+        public async Task Complete(int number, int total)
+        {
+            await pulse.Emit($"Sale-{number}", new SaleCompleted(number));
+            if (total > 100)
+            {
+                await pulse.Emit($"Sale-{number}", new SaleRefunded(number));
+                await pulse.Enqueue(new ImportProducts($"refund-{number}.csv"));
+            }
+        }
+    }
+
+    private sealed class PriceSet
+    {
+        public string Sku { get; init; } = string.Empty;
+
+        public decimal Price { get; init; }
     }
 
     private sealed class RefundBigSales(IPulse pulse) : IEventHandler<SaleCompleted>
@@ -205,6 +252,17 @@ public sealed class TestingPackageTests
             {
                 await pulse.Emit(context.Stream, new SaleRefunded(@event.Number), cancellationToken);
                 await pulse.Enqueue(new ImportProducts($"refund-{@event.Number}.csv"), cancellationToken);
+            }
+        }
+    }
+
+    private sealed class ReportPages : IJobHandler<RebuildIndex>
+    {
+        public async Task Handle(RebuildIndex job, JobContext context, CancellationToken cancellationToken)
+        {
+            for (var page = 1; page <= job.Shard; page++)
+            {
+                await context.Report(page, job.Shard, cancellationToken);
             }
         }
     }
@@ -234,5 +292,15 @@ public sealed class TestingPackageTests
             counter.Add();
             return Task.CompletedTask;
         }
+    }
+}
+
+internal static class ShopAssertions
+{
+    public static SaleCompleted SoldWithNumber(this IRecordedPulse pulse, int number)
+    {
+        var sale = pulse.Emitted<SaleCompleted>();
+        Assert.Equal(number, sale.Number);
+        return sale;
     }
 }

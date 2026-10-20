@@ -28,6 +28,11 @@ internal sealed class TypeNames
         return new TypeNames("job", "JobName", type => type.GetCustomAttribute<JobNameAttribute>()?.Name);
     }
 
+    public Type? TypeOf(string name)
+    {
+        return _typesByName.GetValueOrDefault(name);
+    }
+
     public string NameOf(Type type)
     {
         if (_namesByType.TryGetValue(type, out var known))

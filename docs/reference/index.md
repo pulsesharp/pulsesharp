@@ -10,6 +10,6 @@ The reference is generated from the XML documentation in the source code, so it 
 | [PulseSharp.PostgreSql](/reference/postgresql) | `UsePostgreSql` and `PostgreSqlStore`. |
 | [PulseSharp.Sync](/reference/sync) | `SyncWithCloud`, `UseSync`, `SyncOptions` and `IPulseSync`. |
 | [PulseSharp.Sync.Server](/reference/sync-server) | `UseSyncServer`, `SyncServerOptions` and `MapPulseSharpSync`. |
-| [PulseSharp.Testing](/reference/testing) | `RecordingPulse`, `PulseTestHost`, `TestEventContext`, `TestJobContext` and the checks. Test projects only. |
+| [PulseSharp.Testing](/reference/testing) | `FakePulse`, the checks (`PulseAssertions`), `handler.Handle(event)`, `FakeJobContext` and `PulseTestHost`. Test projects only. |
 
 Everyday types live in the `PulseSharp` namespace (including `UseSqlite`). `AddPulseSharp` is in `Microsoft.Extensions.DependencyInjection`, next to your other registrations. Types for store authors are in `PulseSharp.Stores`, and the store classes are in `PulseSharp.Sqlite` and `PulseSharp.PostgreSql`.

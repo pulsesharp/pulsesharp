@@ -1,32 +1,29 @@
-using System.Reflection;
-
 namespace PulseSharp.Testing;
 
 /// <summary>
-/// A <see cref="JobContext"/> for calling a job handler class directly in a test. It records the progress the
-/// handler reports.
+/// A <see cref="JobContext"/> for tests. It records the progress a job handler reports. Derive from it to change how
+/// it behaves.
 /// </summary>
-/// <example>
-/// <code>
-/// var context = TestJobContext.For(job);
-/// await handler.Handle(job, context, CancellationToken.None);
-/// Assert.Equal((3, 3), context.LastProgress);
-/// </code>
-/// </example>
-public sealed class TestJobContext : JobContext
+public class FakeJobContext : JobContext
 {
     private readonly object _gate = new();
     private readonly List<(int Done, int Total)> _progress = [];
 
-    private TestJobContext(Guid jobId, string jobName, int attempt)
+    /// <summary>
+    /// Creates the context.
+    /// </summary>
+    /// <param name="jobName">The job's name. The default is <c>test-job</c>.</param>
+    /// <param name="attempt">The attempt number: 1 for the first try, 2 for the first retry. The default is 1.</param>
+    public FakeJobContext(string jobName = "test-job", int attempt = 1)
     {
-        JobId = jobId;
+        ArgumentException.ThrowIfNullOrWhiteSpace(jobName);
+        ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
         JobName = jobName;
         Attempt = attempt;
     }
 
     /// <inheritdoc />
-    public override Guid JobId { get; }
+    public override Guid JobId { get; } = Guid.NewGuid();
 
     /// <inheritdoc />
     public override string JobName { get; }
@@ -60,23 +57,6 @@ public sealed class TestJobContext : JobContext
                 return _progress.Count == 0 ? null : _progress[^1];
             }
         }
-    }
-
-    /// <summary>
-    /// Creates a context for a job.
-    /// </summary>
-    /// <typeparam name="TJob">The job type.</typeparam>
-    /// <param name="job">The job the handler receives.</param>
-    /// <param name="attempt">The attempt number: 1 for the first try, 2 for the first retry. The default is 1.</param>
-    /// <returns>The context.</returns>
-    public static TestJobContext For<TJob>(TJob job, int attempt = 1)
-        where TJob : notnull
-    {
-        ArgumentNullException.ThrowIfNull(job);
-        ArgumentOutOfRangeException.ThrowIfLessThan(attempt, 1);
-
-        var type = job.GetType();
-        return new TestJobContext(Guid.NewGuid(), type.GetCustomAttribute<JobNameAttribute>()?.Name ?? type.Name, attempt);
     }
 
     /// <summary>

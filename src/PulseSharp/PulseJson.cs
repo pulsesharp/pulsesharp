@@ -25,6 +25,12 @@ internal sealed class PulseJson
             ?? throw new JsonException($"The stored data is null and can't become a {typeof(T).Name}.");
     }
 
+    public object Deserialize(byte[] data, Type type)
+    {
+        return JsonSerializer.Deserialize(data, _options.GetTypeInfo(type))
+            ?? throw new JsonException($"The stored data is null and can't become a {type.Name}.");
+    }
+
     private static JsonSerializerOptions WithResolver(JsonSerializerOptions options)
     {
         options.TypeInfoResolver ??= DefaultResolver();
