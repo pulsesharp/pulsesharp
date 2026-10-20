@@ -12,6 +12,8 @@ The API review before 1.0: names made consistent, plus two small additions. Rena
 - `IPulseControl.RetryFailed(handlerName = null)`: tries every failed stream again at once, for one handler or all, and returns how many.
 - Finished jobs are cleaned up: jobs that succeeded or were cancelled are deleted 7 days after they finished (`pulse.Advanced.KeepFinishedJobs`, `null` keeps every job). Failed jobs are kept until retried. The app instance that runs jobs does it about once an hour.
 - **Store authors:** `IPulseStore.DeleteFinishedJobs(finishedBefore, maxCount)`, with conformance tests.
+- PostgreSQL wakes other app instances at once: every saved event, job, retry and control change sends a `NOTIFY` when its transaction commits (never for a rollback), and each instance listens on one extra connection, so handlers and jobs on other instances start right away instead of at the next poll. The listener reconnects on its own; polling stays as the safety net.
+- **Store authors:** optional `INotifyingStore.ListenForChanges(changed, cancellationToken)` for stores that can tell other instances about new work.
 - **`PulseSharp.Testing`**, a new package for test projects, for any test framework:
   - `FakePulse`: an `IPulse` that records what is emitted and enqueued (`Events`, `Jobs`), checks expected versions, and can fail on purpose (`ThrowOnEmit`, `ThrowOnEnqueue`). An open class you can derive from.
   - Checks as extension methods: `Emitted<T>()`, `Emitted<T>(stream)`, `Emitted(event)`, `Emitted<T>(e => …)`, `NotEmitted<T>()`, `Enqueued…`, `NotEnqueued<T>()`, `AllEmitted<T>()`, `AllEnqueued<T>()`. They return what they find, and a failing check shows everything that happened. Write your own on `IRecordedPulse`.

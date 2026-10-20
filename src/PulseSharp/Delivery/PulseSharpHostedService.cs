@@ -34,6 +34,28 @@ internal sealed class PulseSharpHostedService(
             runs.Add(new JobRunner(store, signal, settings, services, time, logger).Run(stoppingToken));
         }
 
+        if (store is INotifyingStore notifying)
+        {
+            runs.Add(Listen(notifying, logger, stoppingToken));
+        }
+
         return Task.WhenAll(runs);
+    }
+
+    private async Task Listen(INotifyingStore notifying, ILogger logger, CancellationToken stoppingToken)
+    {
+        await Task.Yield();
+
+        try
+        {
+            await notifying.ListenForChanges(signal.Notify, stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Log.ListenerError(logger, exception);
+        }
     }
 }

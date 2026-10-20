@@ -62,7 +62,7 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - **`IPulseControl`**: list the cursors of every handler, **retry** or **skip** a failed event, retry every failed stream at once (`RetryFailed`), or **rewind** a handler to handle everything again.
 - **Handler discovery**: `pulse.AddHandlersFromAssembly(typeof(Program).Assembly)`, or explicit `AddHandler<TEvent, THandler>()` / `AddJobHandler<TJob, THandler>()` for trimming and Native AOT.
 - **SQLite store**: `services.AddPulseSharpSqlite("app.db", …)` or `pulse.UseSqlite("app.db")` (package `PulseSharp.Sqlite`). Events, cursors and jobs survive a restart; your own `SqliteTransaction` saves data and events together.
-- **PostgreSQL store**: `pulse.UsePostgreSql(connectionString)` (package `PulseSharp.PostgreSql`, schema `pulsesharp` by default). Run several app instances on one database: each handler is delivered by one instance at a time, jobs are claimed with `SKIP LOCKED`, and `IPulseControl` works from any instance.
+- **PostgreSQL store**: `pulse.UsePostgreSql(connectionString)` (package `PulseSharp.PostgreSql`, schema `pulsesharp` by default). Run several app instances on one database: each handler is delivered by one instance at a time, jobs are claimed with `SKIP LOCKED`, and `IPulseControl` works from any instance, and other instances hear about new work at once (`LISTEN/NOTIFY`).
 - **Jobs**: `Enqueue` now, `EnqueueIn` / `EnqueueAt` later, one handler per job type, retries with a growing delay, progress (`context.Report`), cancel (the handler's token), `Advanced.MaxParallelJobs` (default 4), finished jobs cleaned up after 7 days (`Advanced.KeepFinishedJobs`), and leases so a job left behind by a stopped app instance runs again. `IPulseControl` reads, lists, cancels and retries jobs.
 
 - **Device to cloud sync**: `pulse.SyncWithCloud(url, key)` on the device (package `PulseSharp.Sync`), `pulse.UseSyncServer(server => server.AllowNode("till-1", key))` and `app.MapPulseSharpSync()` on the server (package `PulseSharp.Sync.Server`). The device works offline; when online it sends its own events and receives the server's. No duplicates, no echoes, resumable batches, and the server decides which streams each device may receive.
@@ -83,7 +83,7 @@ In-memory store, one machine, BenchmarkDotNet short run ([`benchmarks/`](https:/
 | Emit + deliver to 3 handlers | ~5.6 µs | 1.9 KB |
 | Enqueue + run a job | ~21 µs | 4.5 KB |
 | Emit to a SQLite file (pooled, fully durable) | ~0.66 ms | 5.7 KB |
-| Emit to PostgreSQL (one round trip, local Docker) | ~2.0 ms | 5.8 KB |
+| Emit to PostgreSQL (one round trip, local Docker) | ~2.0 ms | 6.2 KB |
 
 Numbers for the PostgreSQL store will follow with that store.
 

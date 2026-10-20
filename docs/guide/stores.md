@@ -79,7 +79,8 @@ Run as many instances of your app as you like against one database:
 
 - **Events:** each handler is delivered by **one instance at a time**. That instance holds a lease on the handler and renews it every poll interval. When it stops, another instance takes over at once; when it crashes, after `Advanced.HandlerLease` (default 30 seconds). Different handlers can run on different instances.
 - **Jobs:** every instance runs jobs. A job is claimed by exactly one instance (`FOR UPDATE SKIP LOCKED`), so instances never wait for each other.
-- **Control:** `IPulseControl` works from any instance. A retry, skip or rewind is stored, and the instance that holds the handler applies it within about one poll interval.
+- **Control:** `IPulseControl` works from any instance. A retry, skip or rewind is stored, and the instance that holds the handler applies it at once.
+- **No waiting between instances:** when one instance saves an event, a job or a control change, the others are told at once (PostgreSQL `LISTEN/NOTIFY`, sent when the transaction commits), so their handlers and jobs start right away. Each instance keeps one extra connection open for this. If that connection drops, it reconnects on its own, and polling (`Advanced.PollInterval`) keeps everything moving meanwhile.
 
 ### Saving your data and the event together
 

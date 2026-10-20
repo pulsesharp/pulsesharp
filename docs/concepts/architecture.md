@@ -76,7 +76,7 @@ The engine contains all the logic. A store only saves and reads. A store impleme
 | Cursors | Load and save cursors; record failures; list status |
 | Leases | Acquire, renew and release a lease with an expiry |
 | Jobs | Enqueue; claim the next due job; progress; finish, fail or reschedule; cancel flag |
-| Wake-up *(optional)* | Notify other instances of new data, as PostgreSQL `LISTEN/NOTIFY` does. Without it, the timer is used. |
+| Wake-up *(optional, `INotifyingStore`)* | Tell other instances about new data at once. The PostgreSQL store uses `LISTEN/NOTIFY`. Without it, the timer is used. |
 | Schema | Create and upgrade its own tables, safely when several instances start at once |
 
 A shared **conformance test suite** (`PulseSharp.Testing`) runs against every store, official or community. A store that passes it behaves like every other store.

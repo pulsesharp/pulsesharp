@@ -49,6 +49,13 @@ internal static partial class Log
     public static partial void RunnerError(ILogger logger, Exception exception, string handlerName);
 
     [LoggerMessage(
+        EventId = 1004,
+        Level = LogLevel.Warning,
+        Message = "The store stopped listening for changes from other app instances. New work from them is found by polling."
+    )]
+    public static partial void ListenerError(ILogger logger, Exception exception);
+
+    [LoggerMessage(
         EventId = 2001,
         Level = LogLevel.Warning,
         Message = "Job {JobName} {JobId} failed (attempt {Attempt} of {MaxAttempts}). Retrying at {RetryAt}."

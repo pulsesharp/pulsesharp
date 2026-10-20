@@ -14,8 +14,11 @@ namespace PulseSharp.PostgreSql;
 /// Appends in one schema run one transaction at a time (a transaction-level advisory lock), so events always become
 /// visible in position order and readers never skip one. Keep transactions that emit events short.
 /// </remarks>
-public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
+public sealed partial class PostgreSqlStore : ISyncStore, INotifyingStore, IAsyncDisposable
 {
+    private const int MaxChannelLength = 63;
+    private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(5);
+
     private readonly NpgsqlDataSource _dataSource;
     private readonly string _schema;
     private readonly string _events;
@@ -23,6 +26,8 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
     private readonly string _handlers;
     private readonly string _jobs;
     private readonly string _jobColumns;
+    private readonly string _channel;
+    private readonly string _listenConnectionString;
     private readonly SemaphoreSlim _schemaGate = new(1, 1);
     private volatile bool _schemaReady;
 
@@ -51,6 +56,51 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
         _jobColumns =
             "job_id, job_name, convert_to(data::text, 'UTF8'), state, attempts, done, total, last_error, enqueued_at, run_at, " +
             "started_at, finished_at, lease_owner, lease_until, cancel_requested";
+
+        var channel = $"pulsesharp_{schema}";
+        _channel = channel.Length > MaxChannelLength ? channel[..MaxChannelLength] : channel;
+        _listenConnectionString = new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false, KeepAlive = 30 }.ToString();
+    }
+
+    /// <inheritdoc />
+    public async Task ListenForChanges(Action changed, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(changed);
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(_listenConnectionString);
+                connection.Notification += (_, _) => changed();
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await using (var listen = new NpgsqlCommand($"LISTEN \"{_channel}\";", connection))
+                {
+                    await listen.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                changed();
+                while (true)
+                {
+                    await connection.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception) when (exception is NpgsqlException or System.Net.Sockets.SocketException or IOException or TimeoutException)
+            {
+                try
+                {
+                    await Task.Delay(ReconnectDelay, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -93,6 +143,7 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
             (int)expectedVersion.Kind,
             expectedVersion.Position
         ));
+        batch.BatchCommands.Add(NotifyCommand());
 
         await using (var reader = await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -188,6 +239,8 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
                 newEvent.EmittedAt
             ));
         }
+
+        batch.BatchCommands.Add(NotifyCommand());
 
         var saved = new List<StoredEvent>();
         await using var reader = await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -380,6 +433,11 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
             await save.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        await using (var notify = Prepare(new NpgsqlCommand("SELECT pg_notify($1, '');", connection, transaction), [_channel]))
+        {
+            await notify.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return revision;
     }
@@ -393,17 +451,14 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
             VALUES ($1, $2, convert_from($3, 'UTF8')::jsonb, 0, 0, 0, 0, $4, $5)
             RETURNING {_jobColumns};
             """;
-        object[] values = [newJob.JobId, newJob.JobName, newJob.Data, newJob.EnqueuedAt, newJob.RunAt];
+        var outer = transaction is null ? null : OuterTransaction(transaction);
+        await using var batch = outer is null ? _dataSource.CreateBatch() : new NpgsqlBatch(outer.Connection, outer);
+        batch.BatchCommands.Add(BatchCommand(sql, newJob.JobId, newJob.JobName, newJob.Data, newJob.EnqueuedAt, newJob.RunAt));
+        batch.BatchCommands.Add(NotifyCommand());
 
-        if (transaction is not null)
-        {
-            var outer = OuterTransaction(transaction);
-            await using var joined = Prepare(new NpgsqlCommand(sql, outer.Connection, outer), values);
-            return (await ReadSingleJob(joined, cancellationToken).ConfigureAwait(false))!;
-        }
-
-        await using var command = await Command(sql, cancellationToken, values).ConfigureAwait(false);
-        return (await ReadSingleJob(command, cancellationToken).ConfigureAwait(false))!;
+        await using var reader = await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        return ReadJob(reader);
     }
 
     /// <inheritdoc />
@@ -576,6 +631,11 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
                 started_at = NULL, finished_at = NULL, cancel_requested = FALSE
             WHERE job_id = $1 AND state IN (4, 5);
             """, cancellationToken, jobId, now).ConfigureAwait(false);
+        if (changed > 0)
+        {
+            await Execute("SELECT pg_notify($1, '');", cancellationToken, _channel).ConfigureAwait(false);
+        }
+
         return changed > 0;
     }
 
@@ -593,6 +653,11 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
             ? Prepare(_dataSource.CreateCommand(sql), [stream])
             : Prepare(new NpgsqlCommand(sql, outer.Connection, outer), [stream]);
         return (long)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+    }
+
+    private NpgsqlBatchCommand NotifyCommand()
+    {
+        return BatchCommand("SELECT pg_notify($1, '');", _channel);
     }
 
     private static NpgsqlBatchCommand BatchCommand(string sql, params object[] values)
