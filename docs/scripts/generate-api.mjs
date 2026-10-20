@@ -9,7 +9,8 @@ const packages = [
   { id: 'PulseSharp.Sqlite', page: 'sqlite', intro: 'The SQLite store.' },
   { id: 'PulseSharp.PostgreSql', page: 'postgresql', intro: 'The PostgreSQL store.' },
   { id: 'PulseSharp.Sync', page: 'sync', intro: 'Device to cloud sync: the client that runs on the device.' },
-  { id: 'PulseSharp.Sync.Server', page: 'sync-server', intro: 'Device to cloud sync: the ASP.NET Core endpoint on the server.' }
+  { id: 'PulseSharp.Sync.Server', page: 'sync-server', intro: 'Device to cloud sync: the ASP.NET Core endpoint on the server.' },
+  { id: 'PulseSharp.Testing', page: 'testing', intro: 'Test helpers for apps that use PulseSharp. Reference it from test projects only.' }
 ]
 
 const builtInNames = {

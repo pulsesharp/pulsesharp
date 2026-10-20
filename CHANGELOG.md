@@ -12,6 +12,11 @@ The API review before 1.0: names made consistent, plus two small additions. Rena
 - `IPulseControl.RetryFailed(handlerName = null)`: tries every failed stream again at once, for one handler or all, and returns how many.
 - Finished jobs are cleaned up: jobs that succeeded or were cancelled are deleted 7 days after they finished (`pulse.Advanced.KeepFinishedJobs`, `null` keeps every job). Failed jobs are kept until retried. The app instance that runs jobs does it about once an hour.
 - **Store authors:** `IPulseStore.DeleteFinishedJobs(finishedBefore, maxCount)`, with conformance tests.
+- **`PulseSharp.Testing`**, a new package for test projects, for any test framework:
+  - `RecordingPulse`: an `IPulse` that only records, to test code that emits and enqueues.
+  - `TestEventContext.For(event)` and `TestJobContext.For(job)`: call handler classes directly; the job context records progress.
+  - `PulseTestHost`: the real engine in memory (or on any store) with your handlers and services; `Given(...)`, `WaitUntilIdle()` (no delays in tests) and `ShouldHaveNoFailures()`.
+  - Checks: `Emitted<T>()` / `Enqueued<T>()` with `ShouldHaveOne`, `ShouldHaveNone`, `ShouldHave(count)` and `InStream`, and failure messages that show the condition and what really happened.
 
 ### Changed
 

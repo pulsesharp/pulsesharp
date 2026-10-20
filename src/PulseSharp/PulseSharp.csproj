@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="PulseSharp.Tests" />
+    <InternalsVisibleTo Include="PulseSharp.Testing" />
   </ItemGroup>
 
 </Project>

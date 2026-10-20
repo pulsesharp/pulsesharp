@@ -66,6 +66,7 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - **Jobs**: `Enqueue` now, `EnqueueIn` / `EnqueueAt` later, one handler per job type, retries with a growing delay, progress (`context.Report`), cancel (the handler's token), `Advanced.MaxParallelJobs` (default 4), finished jobs cleaned up after 7 days (`Advanced.KeepFinishedJobs`), and leases so a job left behind by a stopped app instance runs again. `IPulseControl` reads, lists, cancels and retries jobs.
 
 - **Device to cloud sync**: `pulse.SyncWithCloud(url, key)` on the device (package `PulseSharp.Sync`), `pulse.UseSyncServer(server => server.AllowNode("till-1", key))` and `app.MapPulseSharpSync()` on the server (package `PulseSharp.Sync.Server`). The device works offline; when online it sends its own events and receives the server's. No duplicates, no echoes, resumable batches, and the server decides which streams each device may receive.
+- **Testing**: `PulseSharp.Testing` for your test projects: `RecordingPulse` to check what your code emits, `TestEventContext` / `TestJobContext` to call handlers directly, and `PulseTestHost` to run the real engine and `WaitUntilIdle()`, with checks such as `pulse.Emitted<SaleCompleted>().ShouldHaveOne(...)`.
 
 See [`samples/ConsoleSample`](https://github.com/pulsesharp/pulsesharp/blob/main/samples/ConsoleSample/Program.cs): a printer runs out of paper, the receipts fail, and `IPulseControl` retries them; then an end-of-day job reports its progress.
 
@@ -104,6 +105,7 @@ Numbers for the PostgreSQL store will follow with that store.
 | `PulseSharp.PostgreSql` | PostgreSQL store, for servers and several app instances | Preview |
 | `PulseSharp.Sync` | Device to cloud sync: the device side | Preview |
 | `PulseSharp.Sync.Server` | Device to cloud sync: the ASP.NET Core endpoint | Preview |
+| `PulseSharp.Testing` | Test helpers for your app: a recording `IPulse`, handler contexts, and a test host that waits until all work is done | Preview |
 | `PulseSharp.Monitor` | Optional web UI | Planned (after 1.0) |
 
 

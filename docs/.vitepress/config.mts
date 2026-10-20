@@ -56,6 +56,10 @@ export default defineConfig({
           items: [{ text: 'Device to cloud sync', link: '/guide/sync' }]
         },
         {
+          text: 'Testing',
+          items: [{ text: 'Testing your app', link: '/guide/testing' }]
+        },
+        {
           text: 'Setup',
           items: [
             { text: 'Stores (SQLite, PostgreSQL)', link: '/guide/stores' },
@@ -85,7 +89,8 @@ export default defineConfig({
             { text: 'PulseSharp.Sqlite', link: '/reference/sqlite' },
             { text: 'PulseSharp.PostgreSql', link: '/reference/postgresql' },
             { text: 'PulseSharp.Sync', link: '/reference/sync' },
-            { text: 'PulseSharp.Sync.Server', link: '/reference/sync-server' }
+            { text: 'PulseSharp.Sync.Server', link: '/reference/sync-server' },
+            { text: 'PulseSharp.Testing', link: '/reference/testing' }
           ]
         }
       ]

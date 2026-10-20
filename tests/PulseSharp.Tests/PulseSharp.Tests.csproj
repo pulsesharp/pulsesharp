@@ -17,6 +17,7 @@
     <ProjectReference Include="..\..\src\PulseSharp.PostgreSql\PulseSharp.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\PulseSharp.Sync\PulseSharp.Sync.csproj" />
     <ProjectReference Include="..\..\src\PulseSharp.Sync.Server\PulseSharp.Sync.Server.csproj" />
+    <ProjectReference Include="..\..\src\PulseSharp.Testing\PulseSharp.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

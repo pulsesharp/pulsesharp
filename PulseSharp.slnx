@@ -12,6 +12,7 @@
     <Project Path="src/PulseSharp.Sqlite/PulseSharp.Sqlite.csproj" />
     <Project Path="src/PulseSharp.Sync.Server/PulseSharp.Sync.Server.csproj" />
     <Project Path="src/PulseSharp.Sync/PulseSharp.Sync.csproj" />
+    <Project Path="src/PulseSharp.Testing/PulseSharp.Testing.csproj" />
     <Project Path="src/PulseSharp/PulseSharp.csproj" />
   </Folder>
   <Folder Name="/tests/">
