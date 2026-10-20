@@ -14,7 +14,7 @@ namespace PulseSharp.PostgreSql;
 /// Appends in one schema run one transaction at a time (a transaction-level advisory lock), so events always become
 /// visible in position order and readers never skip one. Keep transactions that emit events short.
 /// </remarks>
-public sealed partial class PostgresStore : ISyncStore, IAsyncDisposable
+public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly string _schema;
@@ -32,7 +32,7 @@ public sealed partial class PostgresStore : ISyncStore, IAsyncDisposable
     /// <param name="connectionString">An Npgsql connection string.</param>
     /// <param name="schema">The PostgreSQL schema for PulseSharp's tables. Letters, digits and underscores only.</param>
     /// <exception cref="ArgumentException">The connection string is empty or the schema name is not valid.</exception>
-    public PostgresStore(string connectionString, string schema = "pulsesharp")
+    public PostgreSqlStore(string connectionString, string schema = "pulsesharp")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         if (!SchemaName().IsMatch(schema))
@@ -437,7 +437,7 @@ public sealed partial class PostgresStore : ISyncStore, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async Task<LeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken)
+    public async Task<JobLeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken)
     {
         await using var command = await Command(
             $"UPDATE {_jobs} SET lease_until = $3 WHERE job_id = $1 AND state = 1 AND lease_owner = $2 RETURNING cancel_requested;",
@@ -449,8 +449,8 @@ public sealed partial class PostgresStore : ISyncStore, IAsyncDisposable
 
         var cancelRequested = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return cancelRequested is bool requested
-            ? new LeaseStatus(Held: true, CancelRequested: requested)
-            : new LeaseStatus(Held: false, CancelRequested: false);
+            ? new JobLeaseStatus(Held: true, CancelRequested: requested)
+            : new JobLeaseStatus(Held: false, CancelRequested: false);
     }
 
     /// <inheritdoc />
@@ -688,7 +688,7 @@ public sealed partial class PostgresStore : ISyncStore, IAsyncDisposable
     private static StoredJob ReadJob(NpgsqlDataReader reader)
     {
         return new StoredJob(
-            Id: reader.GetGuid(0),
+            JobId: reader.GetGuid(0),
             JobName: reader.GetString(1),
             Data: reader.GetFieldValue<byte[]>(2),
             State: (JobState)reader.GetInt16(3),

@@ -265,7 +265,7 @@ public sealed class JobTests
         await WaitForJob(host, second, JobState.Succeeded);
 
         var succeeded = await host.Control.GetJobs(JobState.Succeeded);
-        Assert.Equal([second, first], succeeded.Select(job => job.Id));
+        Assert.Equal([second, first], succeeded.Select(job => job.JobId));
         Assert.Empty(await host.Control.GetJobs(JobState.Failed));
     }
 

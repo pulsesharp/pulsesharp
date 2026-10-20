@@ -8,7 +8,7 @@ namespace PulseSharp.Sync.Server;
 /// <remarks>
 /// Every request must be from a known node: one with a key from <see cref="AllowNode"/>, or a signed-in user that
 /// <see cref="NodeFrom"/> turns into a node name. A node may only send events it emitted itself. By default it
-/// receives every event it did not emit; <see cref="AllowNode"/> and <see cref="PullFilter"/> narrow that down.
+/// receives every event it did not emit; <see cref="AllowNode"/> and <see cref="PullStreams"/> narrow that down.
 /// </remarks>
 public sealed class SyncServerOptions
 {
@@ -89,10 +89,10 @@ public sealed class SyncServerOptions
     /// <returns>These options.</returns>
     /// <example>
     /// <code>
-    /// server.PullFilter(node => [$"Store-{StoreOf(node)}-", "Product-"]);
+    /// server.PullStreams(node => [$"Store-{StoreOf(node)}-", "Product-"]);
     /// </code>
     /// </example>
-    public SyncServerOptions PullFilter(Func<string, IReadOnlyList<string>> allowedStreams)
+    public SyncServerOptions PullStreams(Func<string, IReadOnlyList<string>> allowedStreams)
     {
         ArgumentNullException.ThrowIfNull(allowedStreams);
         AllowedStreams = allowedStreams;

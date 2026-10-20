@@ -23,12 +23,14 @@ public sealed class SqliteStore : ISyncStore
     /// <summary>
     /// Creates the store.
     /// </summary>
-    /// <param name="connectionString">A Microsoft.Data.Sqlite connection string, for example <c>Data Source=app.db</c>.</param>
-    /// <exception cref="ArgumentException"><paramref name="connectionString"/> is empty.</exception>
-    public SqliteStore(string connectionString)
+    /// <param name="database">A file name such as <c>app.db</c>, or a Microsoft.Data.Sqlite connection string such as <c>Data Source=app.db</c>.</param>
+    /// <exception cref="ArgumentException"><paramref name="database"/> is empty.</exception>
+    public SqliteStore(string database)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-        _connectionString = connectionString;
+        ArgumentException.ThrowIfNullOrWhiteSpace(database);
+        _connectionString = database.Contains('=', StringComparison.Ordinal)
+            ? database
+            : new SqliteConnectionStringBuilder { DataSource = database }.ToString();
     }
 
     /// <inheritdoc />
@@ -418,7 +420,7 @@ public sealed class SqliteStore : ISyncStore
     }
 
     /// <inheritdoc />
-    public async Task<LeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken)
+    public async Task<JobLeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken)
     {
         await using var connection = await Open(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
@@ -428,8 +430,8 @@ public sealed class SqliteStore : ISyncStore
 
         var cancelRequested = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return cancelRequested is null
-            ? new LeaseStatus(Held: false, CancelRequested: false)
-            : new LeaseStatus(Held: true, CancelRequested: (long)cancelRequested != 0);
+            ? new JobLeaseStatus(Held: false, CancelRequested: false)
+            : new JobLeaseStatus(Held: true, CancelRequested: (long)cancelRequested != 0);
     }
 
     /// <inheritdoc />
@@ -753,7 +755,7 @@ public sealed class SqliteStore : ISyncStore
     private static StoredJob ReadJob(SqliteDataReader reader)
     {
         return new StoredJob(
-            Id: Guid.Parse(reader.GetString(0)),
+            JobId: Guid.Parse(reader.GetString(0)),
             JobName: reader.GetString(1),
             Data: (byte[])reader.GetValue(2),
             State: (JobState)reader.GetInt32(3),

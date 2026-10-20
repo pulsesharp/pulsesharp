@@ -7,7 +7,7 @@ The reference is generated from the XML documentation in the source code, so it 
 | [PulseSharp.Abstractions](/reference/abstractions) | `IPulse`, handler interfaces, contexts, stream names, options, attributes. Reference it from libraries. |
 | [PulseSharp](/reference/core) | `AddPulseSharp`, `PulseSharpBuilder`, `IPulseControl`, and the store contract (`IPulseStore`). Reference it from the app. |
 | [PulseSharp.Sqlite](/reference/sqlite) | `UseSqlite` and `SqliteStore`. |
-| [PulseSharp.PostgreSql](/reference/postgresql) | `UsePostgreSql` and `PostgresStore`. |
+| [PulseSharp.PostgreSql](/reference/postgresql) | `UsePostgreSql` and `PostgreSqlStore`. |
 | [PulseSharp.Sync](/reference/sync) | `SyncWithCloud`, `UseSync`, `SyncOptions` and `IPulseSync`. |
 | [PulseSharp.Sync.Server](/reference/sync-server) | `UseSyncServer`, `SyncServerOptions` and `MapPulseSharpSync`. |
 

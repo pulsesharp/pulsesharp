@@ -237,11 +237,11 @@ public abstract class StoreConformanceTests : IDisposable
         var nothingElse = await Store.ClaimNextJob(Import, "worker-a", Now, TimeSpan.FromHours(1), None);
         var afterRunAt = await Store.ClaimNextJob(Import, "worker-a", Now.AddMinutes(5), TimeSpan.FromHours(1), None);
 
-        Assert.Equal(due, first!.Id);
+        Assert.Equal(due, first!.JobId);
         Assert.Equal(JobState.Running, first.State);
         Assert.Equal(1, first.Attempts);
         Assert.Null(nothingElse);
-        Assert.Equal(later, afterRunAt!.Id);
+        Assert.Equal(later, afterRunAt!.JobId);
         Assert.Null(await Store.ClaimNextJob(Names("OtherJob"), "worker-a", Now.AddDays(1), TimeSpan.FromMinutes(1), None));
     }
 
@@ -255,7 +255,7 @@ public abstract class StoreConformanceTests : IDisposable
         var taken = await Store.ClaimNextJob(Import, "worker-b", Now.AddSeconds(31), TimeSpan.FromSeconds(30), None);
 
         Assert.Null(tooEarly);
-        Assert.Equal(id, taken!.Id);
+        Assert.Equal(id, taken!.JobId);
         Assert.Equal(2, taken.Attempts);
         Assert.Equal("worker-b", taken.LeaseOwner);
     }
@@ -369,8 +369,8 @@ public abstract class StoreConformanceTests : IDisposable
         var all = await Store.GetJobs(null, 10, None);
         var pending = await Store.GetJobs(JobState.Pending, 10, None);
 
-        Assert.Equal([second, first], all.Select(job => job.Id));
-        Assert.Equal([second], pending.Select(job => job.Id));
+        Assert.Equal([second, first], all.Select(job => job.JobId));
+        Assert.Equal([second], pending.Select(job => job.JobId));
         Assert.Single(await Store.GetJobs(null, 1, None));
     }
 
@@ -392,7 +392,7 @@ public abstract class StoreConformanceTests : IDisposable
             null,
             None
         );
-        return job.Id;
+        return job.JobId;
     }
 
     private static IReadOnlySet<string> Names(params string[] names)
@@ -424,20 +424,20 @@ public sealed class SqliteStoreTests : StoreConformanceTests
     }
 }
 
-public sealed class PostgresStoreTests : StoreConformanceTests
+public sealed class PostgreSqlStoreTests : StoreConformanceTests
 {
     private readonly TempSchema _schema = TempSchema.CreateOrSkip();
 
-    public PostgresStoreTests()
+    public PostgreSqlStoreTests()
     {
-        Store = new PostgresStore(_schema.ConnectionString, _schema.Name);
+        Store = new PostgreSqlStore(_schema.ConnectionString, _schema.Name);
     }
 
     protected override ISyncStore Store { get; }
 
     public override void Dispose()
     {
-        ((PostgresStore)Store).DisposeAsync().AsTask().GetAwaiter().GetResult();
+        ((PostgreSqlStore)Store).DisposeAsync().AsTask().GetAwaiter().GetResult();
         _schema.Dispose();
         base.Dispose();
     }

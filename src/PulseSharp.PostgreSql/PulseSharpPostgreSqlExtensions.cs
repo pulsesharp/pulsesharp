@@ -22,6 +22,6 @@ public static class PulseSharpPostgreSqlExtensions
     public static PulseSharpBuilder UsePostgreSql(this PulseSharpBuilder pulse, string connectionString, string schema = "pulsesharp")
     {
         ArgumentNullException.ThrowIfNull(pulse);
-        return pulse.UseStore(new PostgresStore(connectionString, schema));
+        return pulse.UseStore(new PostgreSqlStore(connectionString, schema));
     }
 }

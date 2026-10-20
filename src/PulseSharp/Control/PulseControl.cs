@@ -65,6 +65,27 @@ internal sealed class PulseControl(
         await Change([Cleared(cursor)], cursor.HandlerName, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<int> RetryFailed(string? handlerName = null, CancellationToken cancellationToken = default)
+    {
+        var handlerNames = handlerName is null
+            ? settings.Subscriptions.Select(subscription => subscription.Name).ToList()
+            : [KnownHandler(handlerName).Name];
+
+        var retried = 0;
+        foreach (var name in handlerNames)
+        {
+            var cursors = await store.LoadCursors(name, cancellationToken).ConfigureAwait(false);
+            var failed = cursors.Where(cursor => cursor.State == CursorState.Failed).Select(Cleared).ToList();
+            if (failed.Count > 0)
+            {
+                await Change(failed, name, cancellationToken).ConfigureAwait(false);
+                retried += failed.Count;
+            }
+        }
+
+        return retried;
+    }
+
     public async Task Skip(string handlerName, string stream, CancellationToken cancellationToken = default)
     {
         var subscription = KnownHandler(handlerName);

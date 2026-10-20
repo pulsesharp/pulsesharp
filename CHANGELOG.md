@@ -4,6 +4,22 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+The API review before 1.0: names made consistent, plus two small additions. Renames are listed old → new.
+
+### Added
+
+- `services.AddPulseSharpInMemory(pulse => …)`: the in-memory store in one call, like `AddPulseSharpSqlite` and `AddPulseSharpPostgreSql`.
+- `IPulseControl.RetryFailed(handlerName = null)`: tries every failed stream again at once, for one handler or all, and returns how many.
+
+### Changed
+
+- `UseSqlite` and `new SqliteStore(…)` accept a file name (`"app.db"`) as well as a connection string, like `AddPulseSharpSqlite`.
+- **Breaking:** `PostgresStore` → `PostgreSqlStore`.
+- **Breaking:** `JobInfo.Id` → `JobInfo.JobId`, and for store authors `StoredJob.Id` → `StoredJob.JobId`, so a job's id has one name everywhere.
+- **Breaking (store authors):** `LeaseStatus` → `JobLeaseStatus`, next to `HandlerLeaseStatus`.
+- **Breaking:** sync server `PullFilter(node => …)` → `PullStreams(node => …)`, the same word the device uses.
+- **Breaking:** `UseSyncServer` moved to the `PulseSharp` namespace, with every other method you call on `pulse`. `MapPulseSharpSync` stays in `Microsoft.AspNetCore.Builder`; the `AddPulseSharp…` methods stay in `Microsoft.Extensions.DependencyInjection`.
+
 ## [0.5.0-alpha] - 2026-10-15
 
 ### Added

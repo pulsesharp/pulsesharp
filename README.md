@@ -59,9 +59,9 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - **Optimistic concurrency** with `EmitOptions.ExpectedVersion`.
 - Every event gets a time-ordered, globally unique id (UUIDv7) and records the node that emitted it.
 - **Several streams in parallel** per handler (`Advanced.MaxParallelStreams`, default 4), still in order within each stream.
-- **`IPulseControl`**: list the cursors of every handler, **retry** or **skip** a failed event, or **rewind** a handler to handle everything again.
+- **`IPulseControl`**: list the cursors of every handler, **retry** or **skip** a failed event, retry every failed stream at once (`RetryFailed`), or **rewind** a handler to handle everything again.
 - **Handler discovery**: `pulse.AddHandlersFromAssembly(typeof(Program).Assembly)`, or explicit `AddHandler<TEvent, THandler>()` / `AddJobHandler<TJob, THandler>()` for trimming and Native AOT.
-- **SQLite store**: `services.AddPulseSharpSqlite("app.db", …)` or `pulse.UseSqlite("Data Source=app.db")` (package `PulseSharp.Sqlite`). Events, cursors and jobs survive a restart; your own `SqliteTransaction` saves data and events together.
+- **SQLite store**: `services.AddPulseSharpSqlite("app.db", …)` or `pulse.UseSqlite("app.db")` (package `PulseSharp.Sqlite`). Events, cursors and jobs survive a restart; your own `SqliteTransaction` saves data and events together.
 - **PostgreSQL store**: `pulse.UsePostgreSql(connectionString)` (package `PulseSharp.PostgreSql`, schema `pulsesharp` by default). Run several app instances on one database: each handler is delivered by one instance at a time, jobs are claimed with `SKIP LOCKED`, and `IPulseControl` works from any instance.
 - **Jobs**: `Enqueue` now, `EnqueueIn` / `EnqueueAt` later, one handler per job type, retries with a growing delay, progress (`context.Report`), cancel (the handler's token), `Advanced.MaxParallelJobs` (default 4), and leases so a job left behind by a stopped app instance runs again. `IPulseControl` reads, lists, cancels and retries jobs.
 

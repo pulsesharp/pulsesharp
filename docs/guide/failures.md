@@ -41,6 +41,13 @@ Fixed the cause (the printer has paper again)? Try the stuck event again now, wi
 await control.Retry("print-receipt", "Sale-42");
 ```
 
+Many streams failed for the same reason? Retry all of them at once, for one handler or for every handler:
+
+```csharp
+var retried = await control.RetryFailed();                  // every handler
+await control.RetryFailed("print-receipt");                 // one handler
+```
+
 ### Skip
 
 The event can never succeed (bad data)? Skip it - the handler continues with the next event:

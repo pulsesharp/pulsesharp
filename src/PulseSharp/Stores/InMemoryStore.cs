@@ -243,7 +243,7 @@ internal sealed class InMemoryStore : ISyncStore
     public Task<StoredJob> AddJob(NewJob newJob, DbTransaction? transaction, CancellationToken cancellationToken)
     {
         var job = new StoredJob(
-            Id: newJob.JobId,
+            JobId: newJob.JobId,
             JobName: newJob.JobName,
             Data: newJob.Data,
             State: JobState.Pending,
@@ -262,8 +262,8 @@ internal sealed class InMemoryStore : ISyncStore
 
         lock (_gate)
         {
-            _jobs.Add(job.Id, job);
-            _jobOrder.Add(job.Id, _jobOrder.Count);
+            _jobs.Add(job.JobId, job);
+            _jobOrder.Add(job.JobId, _jobOrder.Count);
         }
 
         return Task.FromResult(job);
@@ -282,7 +282,7 @@ internal sealed class InMemoryStore : ISyncStore
             var next = _jobs.Values
                 .Where(job => jobNames.Contains(job.JobName) && job.IsClaimableAt(now))
                 .OrderBy(job => job.RunAt)
-                .ThenBy(job => _jobOrder[job.Id])
+                .ThenBy(job => _jobOrder[job.JobId])
                 .FirstOrDefault();
 
             if (next is null)
@@ -299,22 +299,22 @@ internal sealed class InMemoryStore : ISyncStore
                 LeaseUntil = now + lease
             };
 
-            _jobs[claimed.Id] = claimed;
+            _jobs[claimed.JobId] = claimed;
             return Task.FromResult<StoredJob?>(claimed);
         }
     }
 
-    public Task<LeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken)
+    public Task<JobLeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
             if (!_jobs.TryGetValue(jobId, out var job) || !job.IsHeldBy(workerId))
             {
-                return Task.FromResult(new LeaseStatus(Held: false, CancelRequested: false));
+                return Task.FromResult(new JobLeaseStatus(Held: false, CancelRequested: false));
             }
 
             _jobs[jobId] = job with { LeaseUntil = leaseUntil };
-            return Task.FromResult(new LeaseStatus(Held: true, CancelRequested: job.CancelRequested));
+            return Task.FromResult(new JobLeaseStatus(Held: true, CancelRequested: job.CancelRequested));
         }
     }
 
@@ -372,7 +372,7 @@ internal sealed class InMemoryStore : ISyncStore
         {
             IReadOnlyList<StoredJob> jobs = _jobs.Values
                 .Where(job => state is null || job.State == state)
-                .OrderByDescending(job => _jobOrder[job.Id])
+                .OrderByDescending(job => _jobOrder[job.JobId])
                 .Take(limit)
                 .ToList();
             return Task.FromResult(jobs);

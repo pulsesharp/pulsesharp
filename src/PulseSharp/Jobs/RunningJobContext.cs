@@ -8,7 +8,7 @@ internal sealed class RunningJobContext(StoredJob job, IPulseStore store, string
     {
         get
         {
-            return job.Id;
+            return job.JobId;
         }
     }
 
@@ -32,6 +32,6 @@ internal sealed class RunningJobContext(StoredJob job, IPulseStore store, string
     {
         ArgumentOutOfRangeException.ThrowIfNegative(done);
         ArgumentOutOfRangeException.ThrowIfNegative(total);
-        return store.SaveProgress(job.Id, workerId, done, total, cancellationToken);
+        return store.SaveProgress(job.JobId, workerId, done, total, cancellationToken);
     }
 }

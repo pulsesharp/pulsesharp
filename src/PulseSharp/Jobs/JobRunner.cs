@@ -89,21 +89,21 @@ internal sealed class JobRunner(
     {
         using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         using var heartbeatStop = new CancellationTokenSource();
-        var heartbeat = KeepLease(job.Id, jobCancellation, heartbeatStop.Token);
+        var heartbeat = KeepLease(job.JobId, jobCancellation, heartbeatStop.Token);
 
         try
         {
             var context = new RunningJobContext(job, store, _workerId);
             await settings.Jobs[job.JobName].Invoke(services, job.Data, context, jobCancellation.Token).ConfigureAwait(false);
-            await store.CompleteJob(job.Id, _workerId, time.GetUtcNow(), CancellationToken.None).ConfigureAwait(false);
+            await store.CompleteJob(job.JobId, _workerId, time.GetUtcNow(), CancellationToken.None).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            await store.ReleaseJob(job.Id, _workerId, CancellationToken.None).ConfigureAwait(false);
+            await store.ReleaseJob(job.JobId, _workerId, CancellationToken.None).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
         {
-            await store.CancelRunningJob(job.Id, _workerId, time.GetUtcNow(), CancellationToken.None).ConfigureAwait(false);
+            await store.CancelRunningJob(job.JobId, _workerId, time.GetUtcNow(), CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -143,14 +143,14 @@ internal sealed class JobRunner(
         var now = time.GetUtcNow();
         if (job.Attempts >= settings.MaxAttempts)
         {
-            Log.JobFailed(logger, failure, job.JobName, job.Id, job.Attempts);
-            await store.FailJobAttempt(job.Id, _workerId, failure.ToString(), null, now, CancellationToken.None).ConfigureAwait(false);
+            Log.JobFailed(logger, failure, job.JobName, job.JobId, job.Attempts);
+            await store.FailJobAttempt(job.JobId, _workerId, failure.ToString(), null, now, CancellationToken.None).ConfigureAwait(false);
             return;
         }
 
         var retryAt = now + settings.RetryDelayFor(job.Attempts);
-        Log.JobWillRetry(logger, failure, job.JobName, job.Id, job.Attempts, settings.MaxAttempts, retryAt);
-        await store.FailJobAttempt(job.Id, _workerId, failure.ToString(), retryAt, now, CancellationToken.None).ConfigureAwait(false);
+        Log.JobWillRetry(logger, failure, job.JobName, job.JobId, job.Attempts, settings.MaxAttempts, retryAt);
+        await store.FailJobAttempt(job.JobId, _workerId, failure.ToString(), retryAt, now, CancellationToken.None).ConfigureAwait(false);
     }
 
     private async Task WaitForWork(Task wakeUp, CancellationToken stoppingToken)

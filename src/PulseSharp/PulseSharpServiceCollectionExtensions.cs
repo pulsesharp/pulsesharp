@@ -36,6 +36,36 @@ public static class PulseSharpServiceCollectionExtensions
     /// </example>
     public static IServiceCollection AddPulseSharp(this IServiceCollection services, Action<PulseSharpBuilder> configure)
     {
+        return Add(services, configure);
+    }
+
+    /// <summary>
+    /// Adds PulseSharp and keeps its events and jobs in memory. Everything is lost when the app stops: use it to
+    /// learn, in tests and in samples. For data that must survive a restart, use <c>AddPulseSharpSqlite</c> or
+    /// <c>AddPulseSharpPostgreSql</c>.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configure">Adds handlers and changes settings. Optional.</param>
+    /// <returns>The service collection.</returns>
+    /// <example>
+    /// <code>
+    /// builder.Services.AddPulseSharpInMemory(pulse =>
+    /// {
+    ///     pulse.When&lt;SaleCompleted&gt;(sale => Console.WriteLine($"Sold for {sale.Total}"));
+    /// });
+    /// </code>
+    /// </example>
+    public static IServiceCollection AddPulseSharpInMemory(this IServiceCollection services, Action<PulseSharpBuilder>? configure = null)
+    {
+        return Add(services, pulse =>
+        {
+            pulse.UseInMemory();
+            configure?.Invoke(pulse);
+        });
+    }
+
+    private static IServiceCollection Add(IServiceCollection services, Action<PulseSharpBuilder> configure)
+    {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
 

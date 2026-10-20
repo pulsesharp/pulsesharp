@@ -29,11 +29,10 @@ public static class PulseSharpSqliteServiceCollectionExtensions
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(database);
-        var connectionString = database.Contains('=', StringComparison.Ordinal) ? database : $"Data Source={database}";
 
         return services.AddPulseSharp(pulse =>
         {
-            pulse.UseSqlite(connectionString);
+            pulse.UseSqlite(database);
             configure?.Invoke(pulse);
         });
     }

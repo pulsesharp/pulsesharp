@@ -10,6 +10,8 @@ dotnet add package PulseSharp.Sync --prerelease
 ```
 
 ```csharp
+using PulseSharp;
+
 builder.Services.AddPulseSharpSqlite("till.db", pulse =>
 {
     pulse.Node = "till-1";
@@ -29,6 +31,8 @@ dotnet add package PulseSharp.Sync.Server --prerelease
 ```
 
 ```csharp
+using PulseSharp;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddPulseSharpPostgreSql(builder.Configuration.GetConnectionString("Events")!, pulse =>
@@ -107,7 +111,7 @@ pulse.UseSyncServer(server =>
 pulse.UseSyncServer(server =>
 {
     server.AllowNode("till-1", tillOneKey);
-    server.PullFilter(node => ["Product-", $"Store-{StoreOf(node)}-"]);
+    server.PullStreams(node => ["Product-", $"Store-{StoreOf(node)}-"]);
 });
 ```
 

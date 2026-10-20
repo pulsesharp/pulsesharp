@@ -46,18 +46,17 @@ features:
 ## A quick look
 
 ```bash
-dotnet add package PulseSharp --prerelease
+dotnet add package PulseSharp.Sqlite --prerelease
 ```
 
 ```csharp
-builder.Services.AddPulseSharp(pulse =>
+builder.Services.AddPulseSharpSqlite("app.db", pulse =>
 {
-    pulse.UseInMemory();
-    pulse.On<SaleCompleted>("print-receipt", async (sale, context, ct) => await PrintReceipt(sale, ct));
-    pulse.OnJob<ExportReport>(async (job, context, ct) => await Export(job, context, ct));
+    pulse.When<SaleCompleted>(async sale => await PrintReceipt(sale));
+    pulse.OnJob<ExportReport>(async report => await Export(report));
 });
 
-await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total));
+await pulse.Emit(new SaleCompleted(sale.Id, sale.Total));
 await pulse.Enqueue(new ExportReport(today));
 ```
 

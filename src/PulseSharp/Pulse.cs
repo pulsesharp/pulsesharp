@@ -73,6 +73,6 @@ internal sealed class Pulse(
 
         var stored = await store.AddJob(newJob, options.Transaction, cancellationToken).ConfigureAwait(false);
         signal.Notify();
-        return stored.Id;
+        return stored.JobId;
     }
 }

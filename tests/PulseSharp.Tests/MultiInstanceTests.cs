@@ -133,7 +133,7 @@ public sealed class SqliteMultiInstanceTests : MultiInstanceTests
     }
 }
 
-public sealed class PostgresMultiInstanceTests : MultiInstanceTests
+public sealed class PostgreSqlMultiInstanceTests : MultiInstanceTests
 {
     private readonly TempSchema _schema = TempSchema.CreateOrSkip();
 

@@ -30,6 +30,21 @@ public interface IPulseControl
     Task Retry(string handlerName, string stream, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Tries every failed stream again now, with a fresh attempt count. Use it when the cause is fixed, for example
+    /// after the printer has paper again.
+    /// </summary>
+    /// <param name="handlerName">The handler, or <see langword="null"/> for all handlers.</param>
+    /// <param name="cancellationToken">Cancels the change.</param>
+    /// <returns>How many streams will be tried again. The app instance that holds each handler applies the change within about one poll interval.</returns>
+    /// <exception cref="ArgumentException">No handler has this name.</exception>
+    /// <example>
+    /// <code>
+    /// var retried = await control.RetryFailed();
+    /// </code>
+    /// </example>
+    Task<int> RetryFailed(string? handlerName = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Skips the stuck event of a stream: the handler never handles it, and continues with the next event.
     /// </summary>
     /// <param name="handlerName">The handler.</param>

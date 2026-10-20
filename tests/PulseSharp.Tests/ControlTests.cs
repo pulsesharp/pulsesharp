@@ -53,6 +53,46 @@ public sealed class ControlTests
     }
 
     [Fact]
+    public async Task RetryFailedRetriesEveryFailedStream()
+    {
+        var printerOnline = false;
+        var printed = new ConcurrentQueue<int>();
+        await using var host = await TestHost.Start(pulse =>
+        {
+            pulse.MaxAttempts = 1;
+            pulse.On<SaleCompleted>("printer", (sale, _, _) =>
+            {
+                if (!Volatile.Read(ref printerOnline))
+                {
+                    throw new InvalidOperationException("Printer offline.");
+                }
+
+                printed.Enqueue(sale.Number);
+                return Task.CompletedTask;
+            });
+            pulse.On<SaleCompleted>("audit", (_, _, _) => Task.CompletedTask);
+        });
+
+        await host.Pulse.Emit(new SaleStream("A"), new SaleCompleted(1));
+        await host.Pulse.Emit(new SaleStream("B"), new SaleCompleted(2));
+        await WaitForCursor(host, "printer", "Sale-A", CursorState.Failed);
+        await WaitForCursor(host, "printer", "Sale-B", CursorState.Failed);
+        await WaitForCursor(host, "audit", "Sale-B", CursorState.Active);
+
+        Volatile.Write(ref printerOnline, true);
+        var retried = await host.Control.RetryFailed();
+        var nothingLeft = await host.Control.RetryFailed("audit");
+
+        Assert.Equal(2, retried);
+        Assert.Equal(0, nothingLeft);
+        await Eventually.True(() => printed.Count == 2, "both events are printed after the retry");
+        Assert.Equal([1, 2], printed.Order());
+        await WaitForCursor(host, "printer", "Sale-A", CursorState.Active);
+        await WaitForCursor(host, "printer", "Sale-B", CursorState.Active);
+        await Assert.ThrowsAsync<ArgumentException>(() => host.Control.RetryFailed("unknown"));
+    }
+
+    [Fact]
     public async Task SkipMovesPastTheFailedEvent()
     {
         var handled = new ConcurrentQueue<int>();

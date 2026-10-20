@@ -14,7 +14,7 @@ When you need more, everything is still in one place:
 ```csharp
 builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.UseSqlite("Data Source=app.db");
+    pulse.UseSqlite("app.db");
 
     pulse.Node = "till-1";
     pulse.MaxAttempts = 5;
@@ -53,6 +53,7 @@ The one-line setups:
 
 | Method | Store |
 |---|---|
+| `services.AddPulseSharpInMemory(…)` | In memory: lost when the app stops. For learning, tests and samples |
 | `services.AddPulseSharpSqlite("app.db", …)` | SQLite file (`PulseSharp.Sqlite`). Takes a file name or a full connection string |
 | `services.AddPulseSharpPostgreSql(connectionString, …)` | PostgreSQL in the `pulsesharp` schema (`PulseSharp.PostgreSql`) |
 
@@ -61,7 +62,7 @@ Inside `AddPulseSharp(pulse => …)`:
 | Method | Store |
 |---|---|
 | `UseInMemory()` | Keeps everything in memory. Lost when the app stops - for tests, samples and learning |
-| `UseSqlite(connectionString)` | SQLite file - durable, for desktop, mobile and small servers (`PulseSharp.Sqlite`). See [Stores](/guide/stores) |
+| `UseSqlite("app.db")` | SQLite file (a file name or a full connection string) - durable, for desktop, mobile and small servers (`PulseSharp.Sqlite`). See [Stores](/guide/stores) |
 | `UsePostgreSql(connectionString, schema)` | PostgreSQL, several app instances (`PulseSharp.PostgreSql`, schema `pulsesharp` by default). See [Stores](/guide/stores#postgresql) |
 | `UseStore(store)` | Your own `IPulseStore` implementation |
 

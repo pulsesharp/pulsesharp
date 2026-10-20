@@ -13,7 +13,7 @@ public sealed record NewJob(Guid JobId, string JobName, byte[] Data, DateTimeOff
 /// <summary>
 /// A saved job, with its state and lease.
 /// </summary>
-/// <param name="Id">The job id.</param>
+/// <param name="JobId">The job id.</param>
 /// <param name="JobName">The stored name of the job type.</param>
 /// <param name="Data">The serialized job (UTF-8 JSON).</param>
 /// <param name="State">The state.</param>
@@ -29,7 +29,7 @@ public sealed record NewJob(Guid JobId, string JobName, byte[] Data, DateTimeOff
 /// <param name="LeaseUntil">When the lease ends unless renewed.</param>
 /// <param name="CancelRequested">Whether a cancel was requested while the job runs.</param>
 public sealed record StoredJob(
-    Guid Id,
+    Guid JobId,
     string JobName,
     byte[] Data,
     JobState State,
@@ -70,7 +70,7 @@ public sealed record StoredJob(
 
     internal JobInfo ToJobInfo()
     {
-        return new JobInfo(Id, JobName, State, Attempts, Done, Total, LastError, EnqueuedAt, RunAt, StartedAt, FinishedAt);
+        return new JobInfo(JobId, JobName, State, Attempts, Done, Total, LastError, EnqueuedAt, RunAt, StartedAt, FinishedAt);
     }
 }
 
@@ -79,4 +79,4 @@ public sealed record StoredJob(
 /// </summary>
 /// <param name="Held">Whether the worker still holds the lease.</param>
 /// <param name="CancelRequested">Whether a cancel was requested for the job.</param>
-public readonly record struct LeaseStatus(bool Held, bool CancelRequested);
+public readonly record struct JobLeaseStatus(bool Held, bool CancelRequested);

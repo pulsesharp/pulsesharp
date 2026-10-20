@@ -3,7 +3,7 @@ namespace PulseSharp;
 /// <summary>
 /// The state and progress of one job.
 /// </summary>
-/// <param name="Id">The id returned by <see cref="IPulse.Enqueue{TJob}(TJob, CancellationToken)"/>.</param>
+/// <param name="JobId">The id returned by <see cref="IPulse.Enqueue{TJob}(TJob, CancellationToken)"/>.</param>
 /// <param name="JobName">The stored name of the job type.</param>
 /// <param name="State">The state of the job.</param>
 /// <param name="Attempts">How many times the job has started.</param>
@@ -15,7 +15,7 @@ namespace PulseSharp;
 /// <param name="StartedAt">When the latest attempt started.</param>
 /// <param name="FinishedAt">When the job succeeded, failed for good, or was cancelled.</param>
 public sealed record JobInfo(
-    Guid Id,
+    Guid JobId,
     string JobName,
     JobState State,
     int Attempts,

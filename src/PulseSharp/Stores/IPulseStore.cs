@@ -160,7 +160,7 @@ public interface IPulseStore
     /// <param name="leaseUntil">The new end of the lease.</param>
     /// <param name="cancellationToken">Cancels the renewal.</param>
     /// <returns>Whether the worker still holds the lease, and whether a cancel was requested.</returns>
-    Task<LeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken);
+    Task<JobLeaseStatus> RenewLease(Guid jobId, string workerId, DateTimeOffset leaseUntil, CancellationToken cancellationToken);
 
     /// <summary>
     /// Saves the progress of a running job held by <paramref name="workerId"/>.
