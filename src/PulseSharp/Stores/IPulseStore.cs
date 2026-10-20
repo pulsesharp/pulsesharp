@@ -248,6 +248,15 @@ public interface IPulseStore
     Task<bool> RequestCancel(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Deletes jobs that succeeded or were cancelled before a time. Failed, pending, retrying and running jobs are kept.
+    /// </summary>
+    /// <param name="finishedBefore">Only jobs that finished before this time are deleted.</param>
+    /// <param name="maxCount">The most jobs to delete in one call.</param>
+    /// <param name="cancellationToken">Cancels the delete.</param>
+    /// <returns>How many jobs were deleted.</returns>
+    Task<int> DeleteFinishedJobs(DateTimeOffset finishedBefore, int maxCount, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Makes a failed or cancelled job pending again, with a fresh attempt count and progress.
     /// </summary>
     /// <param name="jobId">The job.</param>

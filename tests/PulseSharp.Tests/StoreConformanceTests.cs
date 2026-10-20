@@ -374,6 +374,35 @@ public abstract class StoreConformanceTests : IDisposable
         Assert.Single(await Store.GetJobs(null, 1, None));
     }
 
+    [Fact]
+    public async Task DeletesOnlyJobsThatSucceededOrWereCancelledBeforeTheCutoff()
+    {
+        var succeeded = await AddJob();
+        await Store.ClaimNextJob(Import, "worker-a", Now, TimeSpan.FromMinutes(1), None);
+        await Store.CompleteJob(succeeded, "worker-a", Now, None);
+        var failed = await AddJob();
+        await Store.ClaimNextJob(Import, "worker-a", Now, TimeSpan.FromMinutes(1), None);
+        await Store.FailJobAttempt(failed, "worker-a", "boom", null, Now, None);
+        var cancelled = await AddJob();
+        await Store.RequestCancel(cancelled, Now, None);
+        var recent = await AddJob();
+        await Store.ClaimNextJob(Import, "worker-a", Now, TimeSpan.FromMinutes(1), None);
+        await Store.CompleteJob(recent, "worker-a", Now.AddHours(2), None);
+        var pending = await AddJob(runAt: Now.AddDays(-30));
+
+        var firstBatch = await Store.DeleteFinishedJobs(Now.AddHours(1), 1, None);
+        var secondBatch = await Store.DeleteFinishedJobs(Now.AddHours(1), 100, None);
+        var nothingLeft = await Store.DeleteFinishedJobs(Now.AddHours(1), 100, None);
+
+        Assert.Equal((1, 1, 0), (firstBatch, secondBatch, nothingLeft));
+        Assert.Null(await Store.GetJob(succeeded, None));
+        Assert.Null(await Store.GetJob(cancelled, None));
+        Assert.Equal(JobState.Failed, (await Store.GetJob(failed, None))!.State);
+        Assert.Equal(JobState.Succeeded, (await Store.GetJob(recent, None))!.State);
+        Assert.Equal(JobState.Pending, (await Store.GetJob(pending, None))!.State);
+        Assert.Equal(3, (await Store.GetJobs(null, 10, None)).Count);
+    }
+
     protected Task<StoredEvent> Append(string stream, string eventName, ExpectedVersion expected = default, string data = "{}")
     {
         var newEvent = new NewEvent(Guid.NewGuid(), stream, eventName, Encoding.UTF8.GetBytes(data), "till-1", Now);

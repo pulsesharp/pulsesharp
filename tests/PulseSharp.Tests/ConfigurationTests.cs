@@ -75,6 +75,14 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void RefusesANonPositiveKeepFinishedJobs()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => Configure(pulse => pulse.Advanced.KeepFinishedJobs = TimeSpan.Zero));
+
+        Assert.Contains("or null to keep every job", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RequiresAStore()
     {
         var exception = Assert.Throws<InvalidOperationException>(

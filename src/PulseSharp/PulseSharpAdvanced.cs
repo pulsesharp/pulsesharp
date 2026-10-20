@@ -38,6 +38,13 @@ public sealed class PulseSharpAdvanced
     public TimeSpan HandlerLease { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// How long to keep jobs that succeeded or were cancelled. After that, the app instance that runs jobs deletes them,
+    /// so the job table does not grow forever. Failed jobs are kept until they are retried. The default is 7 days;
+    /// <see langword="null"/> keeps every job.
+    /// </summary>
+    public TimeSpan? KeepFinishedJobs { get; set; } = TimeSpan.FromDays(7);
+
+    /// <summary>
     /// The JSON options used to store events and jobs. The default uses <see cref="System.Text.Json.JsonSerializerDefaults.Web"/>.
     /// For trimming and Native AOT, set options whose <c>TypeInfoResolver</c> is your source-generated <c>JsonSerializerContext</c>.
     /// </summary>

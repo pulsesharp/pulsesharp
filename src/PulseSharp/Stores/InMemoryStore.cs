@@ -404,6 +404,26 @@ internal sealed class InMemoryStore : ISyncStore
         }
     }
 
+    public Task<int> DeleteFinishedJobs(DateTimeOffset finishedBefore, int maxCount, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            var finished = _jobs.Values
+                .Where(job => job.State is (JobState.Succeeded or JobState.Canceled) && job.FinishedAt < finishedBefore)
+                .Take(maxCount)
+                .Select(job => job.JobId)
+                .ToList();
+
+            foreach (var jobId in finished)
+            {
+                _jobs.Remove(jobId);
+                _jobOrder.Remove(jobId);
+            }
+
+            return Task.FromResult(finished.Count);
+        }
+    }
+
     public Task<bool> RetryJob(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         lock (_gate)

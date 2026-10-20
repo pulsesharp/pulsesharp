@@ -10,6 +10,8 @@ The API review before 1.0: names made consistent, plus two small additions. Rena
 
 - `services.AddPulseSharpInMemory(pulse => …)`: the in-memory store in one call, like `AddPulseSharpSqlite` and `AddPulseSharpPostgreSql`.
 - `IPulseControl.RetryFailed(handlerName = null)`: tries every failed stream again at once, for one handler or all, and returns how many.
+- Finished jobs are cleaned up: jobs that succeeded or were cancelled are deleted 7 days after they finished (`pulse.Advanced.KeepFinishedJobs`, `null` keeps every job). Failed jobs are kept until retried. The app instance that runs jobs does it about once an hour.
+- **Store authors:** `IPulseStore.DeleteFinishedJobs(finishedBefore, maxCount)`, with conformance tests.
 
 ### Changed
 

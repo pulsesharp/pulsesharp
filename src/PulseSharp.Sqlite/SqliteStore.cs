@@ -562,6 +562,27 @@ public sealed class SqliteStore : ISyncStore
     }
 
     /// <inheritdoc />
+    public Task<int> DeleteFinishedJobs(DateTimeOffset finishedBefore, int maxCount, CancellationToken cancellationToken)
+    {
+        return ExecuteNonQuery(
+            """
+            DELETE FROM pulsesharp_jobs
+            WHERE sequence IN (
+                SELECT sequence FROM pulsesharp_jobs
+                WHERE state IN (3, 5) AND finished_at < $before
+                LIMIT $max
+            );
+            """,
+            command =>
+            {
+                command.Parameters.AddWithValue("$before", finishedBefore.UtcTicks);
+                command.Parameters.AddWithValue("$max", maxCount);
+            },
+            cancellationToken
+        );
+    }
+
+    /// <inheritdoc />
     public async Task<bool> RetryJob(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var changed = await ExecuteNonQuery(

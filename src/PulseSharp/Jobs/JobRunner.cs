@@ -15,7 +15,11 @@ internal sealed class JobRunner(
 {
     private readonly string _workerId = $"{settings.Node}:{Guid.NewGuid():N}";
     private readonly IReadOnlySet<string> _jobNames = settings.Jobs.Keys.ToHashSet(StringComparer.Ordinal);
+    private static readonly TimeSpan CleanUpEvery = TimeSpan.FromHours(1);
+    private const int CleanUpBatchSize = 1000;
+
     private readonly HashSet<Task> _running = [];
+    private DateTimeOffset _nextCleanUp = DateTimeOffset.MinValue;
 
     public async Task Run(CancellationToken stoppingToken)
     {
@@ -27,6 +31,7 @@ internal sealed class JobRunner(
             {
                 var wakeUp = signal.Next;
                 await StartDueJobs(stoppingToken).ConfigureAwait(false);
+                await CleanUpFinishedJobs(stoppingToken).ConfigureAwait(false);
                 await WaitForWork(wakeUp, stoppingToken).ConfigureAwait(false);
             }
         }
@@ -49,6 +54,41 @@ internal sealed class JobRunner(
             }
 
             _running.Add(RunJob(job, stoppingToken));
+        }
+    }
+
+    private async Task CleanUpFinishedJobs(CancellationToken stoppingToken)
+    {
+        var now = time.GetUtcNow();
+        if (settings.KeepFinishedJobs is not { } keep || now < _nextCleanUp)
+        {
+            return;
+        }
+
+        _nextCleanUp = now + (keep < CleanUpEvery ? keep : CleanUpEvery);
+        try
+        {
+            var deleted = 0;
+            int batch;
+            do
+            {
+                batch = await store.DeleteFinishedJobs(now - keep, CleanUpBatchSize, stoppingToken).ConfigureAwait(false);
+                deleted += batch;
+            }
+            while (batch == CleanUpBatchSize);
+
+            if (deleted > 0)
+            {
+                Log.FinishedJobsDeleted(logger, deleted);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Log.JobRunnerError(logger, exception);
         }
     }
 

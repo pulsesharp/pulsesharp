@@ -71,6 +71,13 @@ internal static partial class Log
     public static partial void JobFailed(ILogger logger, Exception exception, string jobName, Guid jobId, int attempts);
 
     [LoggerMessage(
+        EventId = 2004,
+        Level = LogLevel.Debug,
+        Message = "Deleted {Count} finished jobs older than Advanced.KeepFinishedJobs."
+    )]
+    public static partial void FinishedJobsDeleted(ILogger logger, int count);
+
+    [LoggerMessage(
         EventId = 2003,
         Level = LogLevel.Error,
         Message = "The job runner hit an unexpected error. It will try again."

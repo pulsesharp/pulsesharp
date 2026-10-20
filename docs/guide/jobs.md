@@ -125,6 +125,17 @@ A handler that throws is retried with the same growing delay as events, up to `M
 
 When a worker starts a job it takes a **lease** (`Advanced.JobLease`, default 5 minutes) and renews it every poll interval. If the app instance stops unexpectedly, the lease runs out and another worker - or the same app after a restart - picks the job up again. On a normal shutdown the job is handed back at once, and that attempt is not counted.
 
+## Finished jobs are cleaned up
+
+Jobs that **succeeded** or were **cancelled** are deleted 7 days after they finished, so the job table never grows forever. **Failed** jobs are kept until you retry them, so problems never disappear on their own. Change the time, or keep every job:
+
+```csharp
+pulse.Advanced.KeepFinishedJobs = TimeSpan.FromDays(30);
+pulse.Advanced.KeepFinishedJobs = null;                     // keep every job
+```
+
+The app instance that runs jobs does the cleanup, about once an hour.
+
 ## Parallelism
 
 ```csharp

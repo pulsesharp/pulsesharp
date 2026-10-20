@@ -339,6 +339,11 @@ public sealed class PulseSharpBuilder
             throw new InvalidOperationException("PulseSharp: Advanced.JobLease and Advanced.HandlerLease must be longer than Advanced.PollInterval.");
         }
 
+        if (Advanced.KeepFinishedJobs <= TimeSpan.Zero)
+        {
+            throw new InvalidOperationException("PulseSharp: Advanced.KeepFinishedJobs must be greater than zero, or null to keep every job.");
+        }
+
         return new PulseSharpSettings(
             Node,
             MaxAttempts,
@@ -348,6 +353,7 @@ public sealed class PulseSharpBuilder
             Advanced.MaxParallelJobs,
             Advanced.JobLease,
             Advanced.HandlerLease,
+            Advanced.KeepFinishedJobs,
             _subscriptions.Values.ToList(),
             new Dictionary<string, JobRegistration>(_jobs, StringComparer.Ordinal)
         );

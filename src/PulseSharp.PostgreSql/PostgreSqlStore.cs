@@ -555,6 +555,19 @@ public sealed partial class PostgreSqlStore : ISyncStore, IAsyncDisposable
     }
 
     /// <inheritdoc />
+    public Task<int> DeleteFinishedJobs(DateTimeOffset finishedBefore, int maxCount, CancellationToken cancellationToken)
+    {
+        return Execute($"""
+            DELETE FROM {_jobs}
+            WHERE sequence IN (
+                SELECT sequence FROM {_jobs}
+                WHERE state IN (3, 5) AND finished_at < $1
+                LIMIT $2
+            );
+            """, cancellationToken, finishedBefore, maxCount);
+    }
+
+    /// <inheritdoc />
     public async Task<bool> RetryJob(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var changed = await Execute($"""

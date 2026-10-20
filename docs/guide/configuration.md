@@ -44,6 +44,7 @@ You rarely need these. They live under `pulse.Advanced` so the everyday settings
 | `MaxParallelStreams` | `4` | Streams one handler works on at the same time |
 | `MaxParallelJobs` | `4` | Jobs this app instance runs at the same time |
 | `JobLease` | 5 minutes | How long a running job stays claimed without a heartbeat. Must be longer than `PollInterval` |
+| `KeepFinishedJobs` | 7 days | How long to keep jobs that succeeded or were cancelled. Failed jobs are kept until retried. `null` keeps every job |
 | `HandlerLease` | 30 seconds | How long one app instance keeps a handler without renewing its claim. Another instance takes over after this time if the holder crashes. Must be longer than `PollInterval` |
 | `JsonOptions` | web defaults | How events and jobs are stored as JSON. Set a source-generated resolver for Native AOT - see [Stores](/guide/stores#how-data-is-stored) |
 

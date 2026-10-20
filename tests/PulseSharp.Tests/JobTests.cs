@@ -38,6 +38,42 @@ public sealed class JobTests
     }
 
     [Fact]
+    public async Task DeletesFinishedJobsButKeepsFailedOnes()
+    {
+        await using var host = await TestHost.Start(pulse =>
+        {
+            pulse.MaxAttempts = 1;
+            pulse.Advanced.KeepFinishedJobs = TimeSpan.FromMilliseconds(200);
+            pulse.OnJob<ImportProducts>(job => job.File == "broken.csv"
+                ? throw new InvalidOperationException("Broken file.")
+                : Task.CompletedTask);
+        });
+
+        var done = await host.Pulse.Enqueue(new ImportProducts("products.csv"));
+        var broken = await host.Pulse.Enqueue(new ImportProducts("broken.csv"));
+        await WaitForJob(host, done, JobState.Succeeded);
+        await WaitForJob(host, broken, JobState.Failed);
+
+        await Eventually.True(() => host.Control.GetJob(done).Result is null, "the finished job is deleted");
+        await Eventually.StaysTrue(() => host.Control.GetJob(broken).Result?.State == JobState.Failed, "the failed job is kept");
+    }
+
+    [Fact]
+    public async Task KeepsEveryJobWhenKeepFinishedJobsIsNull()
+    {
+        await using var host = await TestHost.Start(pulse =>
+        {
+            pulse.Advanced.KeepFinishedJobs = null;
+            pulse.OnJob<ImportProducts>(_ => Task.CompletedTask);
+        });
+
+        var done = await host.Pulse.Enqueue(new ImportProducts("products.csv"));
+        await WaitForJob(host, done, JobState.Succeeded);
+
+        await Eventually.StaysTrue(() => host.Control.GetJob(done).Result is not null, "the finished job is kept");
+    }
+
+    [Fact]
     public async Task RunsAJobHandlerClassFromDependencyInjection()
     {
         var recorder = new JobRecorder();
