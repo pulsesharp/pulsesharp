@@ -44,6 +44,16 @@ await pulse.Emit("Sale-" + sale.Id, new SaleCompleted(sale.Id, sale.Total));
 
 Now a problem with one sale never holds up the others, and different sales are handled in parallel.
 
+### How many streams?
+
+PulseSharp remembers how far each handler has got in each stream (its cursor) and keeps that for good. A stream per sale therefore leaves one small row per handler for every sale, forever, and the engine keeps the streams it has seen in memory while the app runs. That is fine for things you create now and then, like customers or documents. For a high volume of events, use a coarser stream, for example one per till and day:
+
+```csharp
+await pulse.Emit($"Sale-{till}-{DateTime.UtcNow:yyyy-MM-dd}", new SaleCompleted(sale.Id, sale.Total));
+```
+
+The trade-off: when a handler keeps failing on one sale, that till's later sales of the day wait behind it until you [retry or skip](/guide/failures) it. In the sample shop, 10,000 sales handled by 3 handlers left 30,001 cursor rows with a stream per sale, and 16 with a stream per till and day.
+
 ### Stream records
 
 By convention a stream name is `{Category}-{Id}`. In a bigger app, create a small record per kind of stream so the name is built in one place:

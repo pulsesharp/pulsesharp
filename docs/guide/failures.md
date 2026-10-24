@@ -70,6 +70,21 @@ The handler handles every stored event again, in order per stream.
 `Retry`, `Skip` and `Rewind` return when the change is stored, and work from any app instance: the instance that holds the handler applies the change at once with PostgreSQL, and within about one poll interval with other stores. An unknown handler name throws `ArgumentException`; retrying a stream the handler has never seen, or skipping when nothing is waiting, throws `InvalidOperationException`.
 :::
 
+## When an app stops suddenly
+
+One app instance runs a handler at a time. It holds a short claim on the handler (a lease) and renews it while it runs. When the app stops normally, it hands its handlers over at once. When the app is killed or the machine loses power, the claim is still there, and the next start of the app (or another instance) takes the handler over only after `HandlerLease` has passed: 30 seconds by default. Nothing is lost. The events wait and then catch up in order.
+
+To shorten the wait, lower the lease. It must stay longer than `PollInterval`:
+
+```csharp
+builder.Services.AddPulseSharpSqlite("app.db", pulse =>
+{
+    pulse.Advanced.HandlerLease = TimeSpan.FromSeconds(10);
+});
+```
+
+A shorter lease means an instance that is alive but stuck, for example in a long garbage collection pause, loses its handlers sooner.
+
 ## Hooks for alerts
 
 PulseSharp sends no e-mail and has no built-in alerting - on purpose. Connect your own: the log events (`PulseSharp` category, event ids `1001` retry, `1002` stopped, `2001`/`2002` jobs) work with any logging or monitoring tool, and `GetCursors()` / `GetJobs(JobState.Failed)` make a simple health check.

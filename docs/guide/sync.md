@@ -66,6 +66,26 @@ app.Run();
 
 Each stream should be written by one node, so the order of its events is never in doubt. Give each device its own streams, for example `"Sale-" + saleId` with ids the device creates. When two devices change the same thing while offline (two tills sell the last item), that is a business rule, not a sync problem: let a handler on the server notice it and react, for example by emitting `StockWentNegative`.
 
+### What the server checks, and what it does not
+
+The server knows each device by its key and refuses an event that claims to come from another node. It does not yet limit **which streams** a device may write to. A device with a valid key can send an event into any stream, including a stream that belongs to the server (a price list, for example), and handlers will handle it like any other event. This is a known limit of 0.6.
+
+Until there is a limit, a handler that acts on events from devices should check where each event came from, with `EventContext.Origin`:
+
+```csharp
+pulse.On<PriceChanged>("apply-price", async (change, context, cancellationToken) =>
+{
+    if (context.Origin != "cloud")
+    {
+        return;
+    }
+
+    await prices.Set(change.Sku, change.Price, cancellationToken);
+});
+```
+
+A device should do the same with the events it receives: trust the server's streams only when `Origin` is the server's node. Use HTTPS between devices and the server, and keep the keys secret.
+
 ## Sync status and "Sync now"
 
 Inject `IPulseSync` to show the status or add a "Sync now" button:

@@ -30,6 +30,10 @@ Getting ready for 1.0: a consistent API, finished jobs cleaned up, instant wake-
 - **Breaking (store authors):** `LeaseStatus` → `JobLeaseStatus`, next to `HandlerLeaseStatus`.
 - **Breaking:** sync server `PullFilter(node => …)` → `PullStreams(node => …)`, the same word the device uses.
 - **Breaking:** `UseSyncServer` moved to the `PulseSharp` namespace, with every other method you call on `pulse`. `MapPulseSharpSync` stays in `Microsoft.AspNetCore.Builder`; the `AddPulseSharp…` methods stay in `Microsoft.Extensions.DependencyInjection`.
+- Docs, from building the example shop:
+  - The events guide explains that every stream keeps a cursor per handler for good, and shows a stream per till and day for high volumes.
+  - The failures guide explains that after a hard kill the next start waits for `HandlerLease` (30 seconds) before its handlers run, and how to shorten it.
+  - The sync guide says what the server checks (who a device is, and that its events carry its own name) and what it does not yet (which streams a device may write to), and shows checking `EventContext.Origin`.
 
 ## [0.5.0-alpha] - 2026-10-15
 
