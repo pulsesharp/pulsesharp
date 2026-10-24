@@ -13,16 +13,13 @@ internal sealed class JobRunner(
     ILogger logger
 )
 {
-    private readonly string _workerId = WorkerIds.Create(settings.Node);
+    private readonly string _workerId = $"{settings.Node}:{Guid.NewGuid():N}";
     private readonly IReadOnlySet<string> _jobNames = settings.Jobs.Keys.ToHashSet(StringComparer.Ordinal);
     private static readonly TimeSpan CleanUpEvery = TimeSpan.FromHours(1);
     private const int CleanUpBatchSize = 1000;
-    private const int TakeOverBatchSize = 1000;
-    private static readonly TimeSpan TakeOverCheckEvery = TimeSpan.FromSeconds(30);
 
     private readonly HashSet<Task> _running = [];
     private DateTimeOffset _nextCleanUp = DateTimeOffset.MinValue;
-    private DateTimeOffset _nextTakeOverCheck = DateTimeOffset.MinValue;
 
     public async Task Run(CancellationToken stoppingToken)
     {
@@ -33,7 +30,6 @@ internal sealed class JobRunner(
             while (!stoppingToken.IsCancellationRequested)
             {
                 var wakeUp = signal.Next;
-                await TakeOverJobsOfGoneProcesses(stoppingToken).ConfigureAwait(false);
                 await StartDueJobs(stoppingToken).ConfigureAwait(false);
                 await CleanUpFinishedJobs(stoppingToken).ConfigureAwait(false);
                 await WaitForWork(wakeUp, stoppingToken).ConfigureAwait(false);
@@ -42,42 +38,6 @@ internal sealed class JobRunner(
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             await Task.WhenAll(_running).ConfigureAwait(false);
-        }
-    }
-
-    private async Task TakeOverJobsOfGoneProcesses(CancellationToken stoppingToken)
-    {
-        var now = time.GetUtcNow();
-        if (now < _nextTakeOverCheck)
-        {
-            return;
-        }
-
-        _nextTakeOverCheck = now + TakeOverCheckEvery;
-        try
-        {
-            var taken = 0;
-            foreach (var job in await store.GetJobs(JobState.Running, TakeOverBatchSize, stoppingToken).ConfigureAwait(false))
-            {
-                if (job.LeaseOwner is { } owner && WorkerIds.IsGoneFromThisMachine(owner))
-                {
-                    await store.RenewLease(job.JobId, owner, now - TimeSpan.FromSeconds(1), stoppingToken).ConfigureAwait(false);
-                    taken++;
-                }
-            }
-
-            if (taken > 0)
-            {
-                Log.JobsTakenOver(logger, taken);
-            }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            Log.JobRunnerError(logger, exception);
         }
     }
 

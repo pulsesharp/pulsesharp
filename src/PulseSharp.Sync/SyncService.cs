@@ -9,7 +9,7 @@ using PulseSharp.Stores;
 
 namespace PulseSharp.Sync;
 
-internal sealed class SyncService : BackgroundService, IPulseSync, IRetentionGuard
+internal sealed class SyncService : BackgroundService, IPulseSync
 {
     private const int MaxWaitingCount = 100_000;
 
@@ -62,13 +62,12 @@ internal sealed class SyncService : BackgroundService, IPulseSync, IRetentionGua
         try
         {
             await RunOnce(cancellationToken).ConfigureAwait(false);
+            return _status;
         }
         finally
         {
             _gate.Release();
         }
-
-        return _status;
     }
 
     public override void Dispose()
@@ -122,7 +121,7 @@ internal sealed class SyncService : BackgroundService, IPulseSync, IRetentionGua
         var waiting = await CountWaiting(cancellationToken).ConfigureAwait(false);
         if (waiting is { } count)
         {
-            Set(_status with { Waiting = count });
+            Set(current => current with { Waiting = count });
         }
 
         if (_failures > 0 || !_options.Push || waiting is not > 0)
@@ -183,13 +182,16 @@ internal sealed class SyncService : BackgroundService, IPulseSync, IRetentionGua
     private async Task Publish(SyncStatus status, CancellationToken cancellationToken)
     {
         var waiting = await CountWaiting(cancellationToken).ConfigureAwait(false);
-        Set(status with { Waiting = waiting ?? status.Waiting });
+        Set(_ => status with { Waiting = waiting ?? status.Waiting });
     }
 
-    private void Set(SyncStatus status)
+    // The change is applied to the status as it is now, so a count taken outside a sync cannot bring back an older status.
+    private void Set(Func<SyncStatus, SyncStatus> change)
     {
+        SyncStatus status;
         lock (_statusGate)
         {
+            status = change(_status);
             if (status == _status)
             {
                 return;
@@ -224,16 +226,6 @@ internal sealed class SyncService : BackgroundService, IPulseSync, IRetentionGua
         {
             return null;
         }
-    }
-
-    public async Task<long?> OwnEventsSentUpTo(CancellationToken cancellationToken)
-    {
-        if (!_options.Push)
-        {
-            return null;
-        }
-
-        return await _store.LoadSyncPosition(_remote ?? AddressKey, SyncDirection.Push, cancellationToken).ConfigureAwait(false);
     }
 
     private string AddressKey

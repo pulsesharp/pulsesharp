@@ -26,19 +26,6 @@ public sealed class PulseSharpAdvanced
     public int MaxParallelJobs { get; set; } = 4;
 
     /// <summary>
-    /// How long a running job stays claimed without a heartbeat. The runner renews the claim every poll interval;
-    /// when an app instance stops unexpectedly, its jobs are picked up again after this time. The default is 5 minutes.
-    /// </summary>
-    public TimeSpan JobLease { get; set; } = TimeSpan.FromMinutes(5);
-
-    /// <summary>
-    /// How long one app instance keeps a handler without renewing its claim. Only the holder delivers that handler's
-    /// events; when an instance stops unexpectedly, another takes over after this time. When the previous holder was a process on this machine that is gone, the
-    /// takeover is immediate. The default is 10 seconds.
-    /// </summary>
-    public TimeSpan HandlerLease { get; set; } = TimeSpan.FromSeconds(10);
-
-    /// <summary>
     /// How long one handler may take for one event. When the time is up, the handler's cancellation token is cancelled; if the
     /// handler has not stopped 10 seconds later, PulseSharp stops waiting, counts the attempt as failed and retries as usual,
     /// so a handler that hangs can never block its stream for good. The default is 5 minutes; <see langword="null"/> sets no limit.
@@ -50,13 +37,6 @@ public sealed class PulseSharpAdvanced
     /// and the attempt counts as failed. The default is 1 hour; <see langword="null"/> sets no limit.
     /// </summary>
     public TimeSpan? JobTimeout { get; set; } = TimeSpan.FromHours(1);
-
-    /// <summary>
-    /// How long to keep events. After that, the app instance deletes events that every handler listening to them has handled
-    /// and, when the app syncs, that were sent to the server. Choose a time longer than the longest a device can stay offline.
-    /// The default is <see langword="null"/>: events are kept forever.
-    /// </summary>
-    public TimeSpan? KeepEvents { get; set; }
 
     /// <summary>
     /// How long to keep jobs that succeeded or were cancelled. After that, the app instance that runs jobs deletes them,

@@ -5,6 +5,17 @@ namespace PulseSharp.Tests;
 public sealed class ConfigurationTests
 {
     [Fact]
+    public void LeasesFollowThePollIntervalWithAFloor()
+    {
+        var oneSecond = TimeSpan.FromSeconds(1);
+
+        Assert.Equal(TimeSpan.FromSeconds(10), PulseSharpSettings.LeaseFor(oneSecond, missedRenewals: 10));
+        Assert.Equal(TimeSpan.FromSeconds(30), PulseSharpSettings.LeaseFor(oneSecond, missedRenewals: 30));
+        Assert.Equal(TimeSpan.FromSeconds(50), PulseSharpSettings.LeaseFor(oneSecond * 5, missedRenewals: 10));
+        Assert.Equal(TimeSpan.FromSeconds(10), PulseSharpSettings.LeaseFor(TimeSpan.FromMilliseconds(50), missedRenewals: 10));
+    }
+
+    [Fact]
     public void RefusesTwoInlineHandlersWithTheSameName()
     {
         var exception = Assert.Throws<InvalidOperationException>(() => Configure(pulse =>
@@ -66,12 +77,6 @@ public sealed class ConfigurationTests
         }));
 
         Assert.Contains("exactly one handler", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void RefusesAJobLeaseShorterThanThePollInterval()
-    {
-        Assert.Throws<InvalidOperationException>(() => Configure(pulse => pulse.Advanced.JobLease = TimeSpan.FromMilliseconds(10)));
     }
 
     [Fact]

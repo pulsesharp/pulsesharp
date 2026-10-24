@@ -523,10 +523,9 @@ public sealed partial class PostgreSqlStore : ISyncStore, INotifyingStore, IAsyn
             }
         }
 
-        await using var current = await Command($"SELECT revision, lease_owner FROM {_handlers} WHERE handler_name = $1;", cancellationToken, handlerName).ConfigureAwait(false);
-        await using var holder = await current.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        await holder.ReadAsync(cancellationToken).ConfigureAwait(false);
-        return new HandlerLeaseStatus(Held: false, Revision: holder.GetInt64(0), Owner: holder.IsDBNull(1) ? null : holder.GetString(1));
+        await using var current = await Command($"SELECT revision FROM {_handlers} WHERE handler_name = $1;", cancellationToken, handlerName).ConfigureAwait(false);
+        var revision = (long)(await current.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+        return new HandlerLeaseStatus(Held: false, Revision: revision);
     }
 
     /// <inheritdoc />
@@ -745,44 +744,6 @@ public sealed partial class PostgreSqlStore : ISyncStore, INotifyingStore, IAsyn
             WHERE job_id = $1 AND state IN (0, 1, 2);
             """, cancellationToken, jobId, now).ConfigureAwait(false);
         return changed > 0;
-    }
-
-    /// <inheritdoc />
-    public async Task<int> DeleteHandledEvents(
-        DateTimeOffset emittedBefore,
-        IReadOnlyList<EventListener> listeners,
-        string ownNode,
-        long? ownEventsSentUpTo,
-        int maxCount,
-        CancellationToken cancellationToken
-    )
-    {
-        await using var command = await Command($"""
-            WITH listener AS (SELECT * FROM unnest($1::text[], $2::text[]) AS l(handler, name)),
-            doomed AS (
-                SELECT e.global_position FROM {_events} e
-                WHERE e.emitted_at < $3
-                  AND e.stream_position < (SELECT MAX(x.stream_position) FROM {_events} x WHERE x.stream = e.stream)
-                  AND ($4::bigint IS NULL OR e.origin <> $5::text OR e.global_position <= $4::bigint)
-                  AND NOT EXISTS (
-                      SELECT 1 FROM listener l
-                      WHERE l.name = e.event_name
-                        AND COALESCE((SELECT c.position FROM {_cursors} c WHERE c.handler_name = l.handler AND c.stream = e.stream), 0) < e.stream_position
-                  )
-                ORDER BY e.global_position
-                LIMIT $6
-            )
-            DELETE FROM {_events} WHERE global_position IN (SELECT global_position FROM doomed);
-            """,
-            cancellationToken,
-            listeners.Select(listener => listener.HandlerName).ToArray(),
-            listeners.Select(listener => listener.EventName).ToArray(),
-            emittedBefore,
-            (object?)ownEventsSentUpTo ?? DBNull.Value,
-            ownNode,
-            maxCount
-        ).ConfigureAwait(false);
-        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

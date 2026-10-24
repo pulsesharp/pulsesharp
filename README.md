@@ -59,6 +59,9 @@ PulseSharp runs as a hosted service, so it works in any app that uses the .NET G
 - **Optimistic concurrency** with `EmitOptions.ExpectedVersion`.
 - Every event gets a time-ordered, globally unique id (UUIDv7) and records the node that emitted it.
 - **Several streams in parallel** per handler (`Advanced.MaxParallelStreams`, default 8), still in order within each stream.
+- **Fast delivery**: a handler saves its progress in groups (at most 100 events or 200 ms of progress is ever repeated after a crash), so a backlog is handled at many thousands of events per second on SQLite and PostgreSQL.
+- **Healing**: a handler or job that hangs is stopped after `Advanced.HandlerTimeout` / `JobTimeout` and retried; after a crash, handlers are taken over within 10 seconds and running jobs within 30.
+- **`EmitAll`**: several events in one commit, all or none, in the order given, and much faster than emitting them one by one.
 - **`IPulseControl`**: list the cursors of every handler, **retry** or **skip** a failed event, retry every failed stream at once (`RetryFailed`), or **rewind** a handler to handle everything again.
 - **Handler discovery**: `pulse.AddHandlersFromAssembly(typeof(Program).Assembly)`, or explicit `AddHandler<TEvent, THandler>()` / `AddJobHandler<TJob, THandler>()` for trimming and Native AOT.
 - **SQLite store**: `services.AddPulseSharpSqlite("app.db", …)` or `pulse.UseSqlite("app.db")` (package `PulseSharp.Sqlite`). Events, cursors and jobs survive a restart; your own `SqliteTransaction` saves data and events together.

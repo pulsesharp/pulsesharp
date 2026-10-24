@@ -84,7 +84,6 @@ public static class PulseSharpSyncExtensions
             (provider.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance).CreateLogger("PulseSharp.Sync")
         ));
         pulse.Services.AddSingleton<IPulseSync>(provider => provider.GetRequiredService<SyncService>());
-        pulse.Services.AddSingleton<PulseSharp.Delivery.IRetentionGuard>(provider => provider.GetRequiredService<SyncService>());
         pulse.Services.AddHostedService(provider => provider.GetRequiredService<SyncService>());
         return pulse;
     }

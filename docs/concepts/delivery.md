@@ -38,7 +38,7 @@ The in-memory store keeps everything in the process. When the app stops, events,
 
 ## Several app instances
 
-With a shared database store (PostgreSQL), every guarantee above holds across instances: one instance at a time delivers a handler (it holds a lease), and each job is claimed by one instance. If an instance crashes in the middle of an event, another takes over after `Advanced.HandlerLease` (at once, when the crashed instance ran on the same machine), and that event may be delivered again - the at-least-once rule.
+With a shared database store (PostgreSQL), every guarantee above holds across instances: one instance at a time delivers a handler (it holds a lease), and each job is claimed by one instance. If an instance crashes in the middle of an event, another takes over after 10 seconds (10 poll intervals), and that event may be delivered again - the at-least-once rule.
 
 ## Graceful shutdown
 

@@ -276,30 +276,6 @@ public interface IPulseStore
     Task<bool> RequestCancel(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Deletes old events that are no longer needed, so the event table does not grow forever. An event is deleted only when
-    /// all of this is true: it was emitted before <paramref name="emittedBefore"/>; it is not the newest event of its stream
-    /// (that one stays, so stream positions never go back); every handler in <paramref name="listeners"/> that listens to it
-    /// has handled it (its cursor for that stream is at or past the event); and, when <paramref name="ownEventsSentUpTo"/>
-    /// is given, an event this node emitted (<paramref name="ownNode"/>) has been sent to the server (its global position is
-    /// at or below that position). A store that keeps events only in memory may delete nothing and return 0.
-    /// </summary>
-    /// <param name="emittedBefore">Only events emitted before this time are deleted.</param>
-    /// <param name="listeners">Every handler and the event names it listens to.</param>
-    /// <param name="ownNode">The name of this node, the origin of the events it emitted itself.</param>
-    /// <param name="ownEventsSentUpTo">The global position up to which this node's own events were sent to the server, or <see langword="null"/> when the app does not sync.</param>
-    /// <param name="maxCount">The most events to delete in this call.</param>
-    /// <param name="cancellationToken">Cancels the deletion.</param>
-    /// <returns>How many events were deleted.</returns>
-    Task<int> DeleteHandledEvents(
-        DateTimeOffset emittedBefore,
-        IReadOnlyList<EventListener> listeners,
-        string ownNode,
-        long? ownEventsSentUpTo,
-        int maxCount,
-        CancellationToken cancellationToken
-    );
-
-    /// <summary>
     /// Deletes jobs that succeeded or were cancelled before a time. Failed, pending, retrying and running jobs are kept.
     /// </summary>
     /// <param name="finishedBefore">Only jobs that finished before this time are deleted.</param>

@@ -33,15 +33,17 @@ They work together: a handler can enqueue a job.
  for each handler:
    1. read new events of the types it handles
    2. group them by stream; skip streams that are retrying or failed
-   3. take a lease on (handler, stream)
-   4. call the handler, then move the cursor
-   5. on error: retry with backoff, then mark the cursor failed
+   3. hold the handler's lease (one instance runs a handler at a time)
+   4. call the handler (with a time limit), then move the cursor
+   5. save the cursors of many streams together, in groups
+   6. on error: retry with backoff, then mark the cursor failed
 ```
 
 - **The timer always runs.** Notifications only make delivery faster, so delivery never depends on a notification arriving.
 - **Order:** within one stream, events reach each handler in order, one at a time. Different streams are handled in parallel.
 - **Isolation:** a failing event stops only its own stream, and only for that one handler.
-- **Several instances:** leases make sure two servers never handle the same (handler, stream) at once. A lease expires if its owner dies.
+- **Several instances:** a lease on each handler makes sure two servers never run the same handler at once. A lease expires if its owner dies (after 10 poll intervals), and another instance or the restarted app takes over.
+- **Healing:** a handler or job that hangs is cancelled and abandoned after its time limit, and the attempt counts as failed and is retried.
 - **Guarantee:** delivery is **at-least-once**. In normal running a handler sees each event once. After a crash at the wrong moment, it can see the same event again, so handlers should be safe to repeat.
 
 ### Operator control
@@ -72,8 +74,8 @@ The engine contains all the logic. A store only saves and reads. A store impleme
 
 | Part | Responsibility |
 |---|---|
-| Events | Emit (with an expected-version check and an optional `DbTransaction`); read after a position, filtered by type; read one stream |
-| Cursors | Load and save cursors; record failures; list status |
+| Events | Emit one event or a group of events in one commit (with an expected-version check and an optional `DbTransaction`); read after a position, filtered by type; read one stream |
+| Cursors | Load and save cursors, one or many in one commit; record failures; list status |
 | Leases | Acquire, renew and release a lease with an expiry |
 | Jobs | Enqueue; claim the next due job; progress; finish, fail or reschedule; cancel flag |
 | Wake-up *(optional, `INotifyingStore`)* | Tell other instances about new data at once. The PostgreSQL store uses `LISTEN/NOTIFY`. Without it, the timer is used. |

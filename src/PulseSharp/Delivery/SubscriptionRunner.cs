@@ -16,7 +16,7 @@ internal sealed class SubscriptionRunner(
     private const int ReadBatchSize = 500;
 
     private readonly Dictionary<string, StreamState> _streams = new(StringComparer.Ordinal);
-    private readonly string _workerId = WorkerIds.Create(settings.Node);
+    private readonly string _workerId = $"{settings.Node}:{Guid.NewGuid():N}";
     private readonly CursorBatch _unsaved = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private long _scanPosition;
@@ -89,15 +89,6 @@ internal sealed class SubscriptionRunner(
         var lease = await store
             .LeaseHandler(subscription.Name, _workerId, time.GetUtcNow(), settings.HandlerLease, cancellationToken)
             .ConfigureAwait(false);
-
-        if (!lease.Held && WorkerIds.IsGoneFromThisMachine(lease.Owner))
-        {
-            Log.HandlerTakenOver(logger, subscription.Name, lease.Owner!);
-            await store.ReleaseHandler(subscription.Name, lease.Owner!, cancellationToken).ConfigureAwait(false);
-            lease = await store
-                .LeaseHandler(subscription.Name, _workerId, time.GetUtcNow(), settings.HandlerLease, cancellationToken)
-                .ConfigureAwait(false);
-        }
 
         if (!lease.Held)
         {

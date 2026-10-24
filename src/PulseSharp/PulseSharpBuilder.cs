@@ -334,20 +334,15 @@ public sealed class PulseSharpBuilder
             Json.Use(Advanced.JsonOptions);
         }
 
-        if (Advanced.JobLease <= Advanced.PollInterval || Advanced.HandlerLease <= Advanced.PollInterval)
-        {
-            throw new InvalidOperationException("PulseSharp: Advanced.JobLease and Advanced.HandlerLease must be longer than Advanced.PollInterval.");
-        }
-
         if (Advanced.KeepFinishedJobs <= TimeSpan.Zero)
         {
             throw new InvalidOperationException("PulseSharp: Advanced.KeepFinishedJobs must be greater than zero, or null to keep every job.");
         }
 
-        if (Advanced.HandlerTimeout <= TimeSpan.Zero || Advanced.JobTimeout <= TimeSpan.Zero || Advanced.KeepEvents <= TimeSpan.Zero)
+        if (Advanced.HandlerTimeout <= TimeSpan.Zero || Advanced.JobTimeout <= TimeSpan.Zero)
         {
             throw new InvalidOperationException(
-                "PulseSharp: Advanced.HandlerTimeout, Advanced.JobTimeout and Advanced.KeepEvents must be greater than zero, or null for no limit (KeepEvents: keep every event)."
+                "PulseSharp: Advanced.HandlerTimeout and Advanced.JobTimeout must be greater than zero, or null for no limit."
             );
         }
 
@@ -358,12 +353,11 @@ public sealed class PulseSharpBuilder
             Advanced.PollInterval,
             Advanced.MaxParallelStreams,
             Advanced.MaxParallelJobs,
-            Advanced.JobLease,
-            Advanced.HandlerLease,
+            PulseSharpSettings.LeaseFor(Advanced.PollInterval, missedRenewals: 30),
+            PulseSharpSettings.LeaseFor(Advanced.PollInterval, missedRenewals: 10),
             Advanced.KeepFinishedJobs,
             Advanced.HandlerTimeout,
             Advanced.JobTimeout,
-            Advanced.KeepEvents,
             _subscriptions.Values.ToList(),
             new Dictionary<string, JobRegistration>(_jobs, StringComparer.Ordinal)
         );

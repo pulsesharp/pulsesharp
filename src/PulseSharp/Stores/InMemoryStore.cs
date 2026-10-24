@@ -277,7 +277,7 @@ internal sealed class InMemoryStore : ISyncStore
             }
 
             _handlers[handlerName] = handler;
-            return Task.FromResult(new HandlerLeaseStatus(free, handler.Revision, handler.Owner));
+            return Task.FromResult(new HandlerLeaseStatus(free, handler.Revision));
         }
     }
 
@@ -489,18 +489,6 @@ internal sealed class InMemoryStore : ISyncStore
 
             return Task.FromResult(false);
         }
-    }
-
-    public Task<int> DeleteHandledEvents(
-        DateTimeOffset emittedBefore,
-        IReadOnlyList<EventListener> listeners,
-        string ownNode,
-        long? ownEventsSentUpTo,
-        int maxCount,
-        CancellationToken cancellationToken
-    )
-    {
-        return Task.FromResult(0);
     }
 
     public Task<int> DeleteFinishedJobs(DateTimeOffset finishedBefore, int maxCount, CancellationToken cancellationToken)

@@ -56,34 +56,6 @@ internal static partial class Log
     public static partial void ListenerError(ILogger logger, Exception exception);
 
     [LoggerMessage(
-        EventId = 1005,
-        Level = LogLevel.Information,
-        Message = "Handler {HandlerName} was held by {Owner}, a process on this machine that is gone. Taking it over."
-    )]
-    public static partial void HandlerTakenOver(ILogger logger, string handlerName, string owner);
-
-    [LoggerMessage(
-        EventId = 1006,
-        Level = LogLevel.Debug,
-        Message = "Deleted {Count} events older than Advanced.KeepEvents."
-    )]
-    public static partial void EventsDeleted(ILogger logger, int count);
-
-    [LoggerMessage(
-        EventId = 1007,
-        Level = LogLevel.Warning,
-        Message = "Deleting old events failed. PulseSharp will try again."
-    )]
-    public static partial void EventCleanUpError(ILogger logger, Exception exception);
-
-    [LoggerMessage(
-        EventId = 2005,
-        Level = LogLevel.Information,
-        Message = "{Count} running jobs belonged to a process on this machine that is gone. They run again."
-    )]
-    public static partial void JobsTakenOver(ILogger logger, int count);
-
-    [LoggerMessage(
         EventId = 2001,
         Level = LogLevel.Warning,
         Message = "Job {JobName} {JobId} failed (attempt {Attempt} of {MaxAttempts}). Retrying at {RetryAt}."

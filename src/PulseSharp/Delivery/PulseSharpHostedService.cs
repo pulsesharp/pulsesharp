@@ -34,11 +34,6 @@ internal sealed class PulseSharpHostedService(
             runs.Add(new JobRunner(store, signal, settings, services, time, logger).Run(stoppingToken));
         }
 
-        if (settings.KeepEvents is not null)
-        {
-            runs.Add(new EventRetention(store, settings, services, time, logger).Run(stoppingToken));
-        }
-
         if (store is INotifyingStore notifying)
         {
             runs.Add(Listen(notifying, logger, stoppingToken));

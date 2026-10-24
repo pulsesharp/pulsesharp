@@ -115,6 +115,10 @@ pulse.Advanced.MaxParallelStreams = 8;
 
 A higher value helps handlers that wait on something, such as a web call or a slow query, because that many streams can wait at the same time. Each stream in progress may use a database connection, so keep `MaxParallelStreams` times the number of handlers below your connection pool size.
 
+## A handler that takes too long
+
+One handler call may take at most `Advanced.HandlerTimeout` (5 minutes by default). After that the handler's token is cancelled, the attempt counts as failed and is retried, so a handler that hangs never blocks its stream for good. Pass the `CancellationToken` on to everything your handler awaits. See [When a handler hangs](/guide/failures#when-a-handler-hangs).
+
 ## Write handlers that are safe to repeat
 
 Delivery is **at-least-once**: after a crash at the wrong moment, a handler can see the same event again. Make handlers idempotent - for example, store `context.EventId` with the data you write and skip events you have already applied. See [Delivery guarantees](/concepts/delivery).

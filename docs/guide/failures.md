@@ -85,18 +85,7 @@ Jobs work the same way with `Advanced.JobTimeout` (1 hour by default). Set eithe
 
 ## When an app stops suddenly
 
-One app instance runs a handler at a time. It holds a short claim on the handler (a lease) and renews it while it runs. When the app stops normally, it hands its handlers over at once. When the app is killed or the machine loses power, the claim is still there. If the app starts again on the same machine, PulseSharp sees that the old process is gone and takes the handlers over at once. In every other case (another machine, or a process that may still be alive) the new instance waits until `HandlerLease` has passed: 10 seconds by default. Nothing is lost. The events wait and then catch up in order.
-
-To change the wait, set the lease. It must stay longer than `PollInterval`:
-
-```csharp
-builder.Services.AddPulseSharpSqlite("app.db", pulse =>
-{
-    pulse.Advanced.HandlerLease = TimeSpan.FromSeconds(20);
-});
-```
-
-A shorter lease means an instance that is alive but stuck, for example in a long garbage collection pause, loses its handlers sooner.
+One app instance runs a handler at a time. It holds a short claim on the handler (a lease) and renews it while it runs. When the app stops normally, it hands its handlers over at once. When the app is killed or the machine loses power, the claim is still there, and the restarted app (or another instance) waits until it runs out: 10 seconds by default (10 poll intervals). Nothing is lost. The events wait and then catch up in order.
 
 ## Hooks for alerts
 
