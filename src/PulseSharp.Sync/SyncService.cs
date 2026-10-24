@@ -185,7 +185,9 @@ internal sealed class SyncService : BackgroundService, IPulseSync
         Set(_ => status with { Waiting = waiting ?? status.Waiting });
     }
 
-    // The change is applied to the status as it is now, so a count taken outside a sync cannot bring back an older status.
+    /// <summary>
+    /// Applies the change to the status as it is now, so a count taken outside a sync cannot bring back an older status.
+    /// </summary>
     private void Set(Func<SyncStatus, SyncStatus> change)
     {
         SyncStatus status;

@@ -16,6 +16,7 @@
     <Project Path="src/PulseSharp/PulseSharp.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/PulseSharp.CrashApp/PulseSharp.CrashApp.csproj" />
     <Project Path="tests/PulseSharp.Tests/PulseSharp.Tests.csproj" />
   </Folder>
 </Solution>
