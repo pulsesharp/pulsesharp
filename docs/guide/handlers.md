@@ -113,6 +113,8 @@ Every handler receives an `EventContext`:
 pulse.Advanced.MaxParallelStreams = 8;
 ```
 
+With many small streams (one event each, for example a stream per sale), a higher value is faster on PostgreSQL, because each stream saves its own progress. Handling 5,000 such streams took 3.3 seconds at 4, and 1.3 seconds at 16. Each stream in progress may use a database connection, so keep `MaxParallelStreams` times the number of handlers below your connection pool size. SQLite writes one thing at a time and gains nothing from a higher value.
+
 ## Write handlers that are safe to repeat
 
 Delivery is **at-least-once**: after a crash at the wrong moment, a handler can see the same event again. Make handlers idempotent - for example, store `context.EventId` with the data you write and skip events you have already applied. See [Delivery guarantees](/concepts/delivery).

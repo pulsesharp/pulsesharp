@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using PulseSharp.Stores;
 
@@ -14,6 +15,9 @@ internal sealed class SubscriptionRunner(
 )
 {
     private const int ReadBatchSize = 500;
+    private const int MaxUnsavedEvents = 100;
+
+    private static readonly TimeSpan MaxUnsavedTime = TimeSpan.FromMilliseconds(200);
 
     private readonly Dictionary<string, StreamState> _streams = new(StringComparer.Ordinal);
     private readonly string _workerId = $"{settings.Node}:{Guid.NewGuid():N}";
@@ -248,22 +252,43 @@ internal sealed class SubscriptionRunner(
 
     private async Task<DateTimeOffset?> DeliverStream(StreamState state, CancellationToken cancellationToken)
     {
-        while (state.Pending.TryPeek(out var stored))
+        var unsaved = 0;
+        var lastSave = Stopwatch.GetTimestamp();
+
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var failure = await TryHandle(stored, state, cancellationToken).ConfigureAwait(false);
-            if (failure is not null)
+            while (state.Pending.TryPeek(out var stored))
             {
-                return await RecordFailure(stored, state, failure, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                var failure = await TryHandle(stored, state, cancellationToken).ConfigureAwait(false);
+                if (failure is not null)
+                {
+                    unsaved = 0;
+                    return await RecordFailure(stored, state, failure, cancellationToken).ConfigureAwait(false);
+                }
+
+                state.Pending.Dequeue();
+                state.Position = stored.StreamPosition;
+                ClearFailure(state);
+                unsaved++;
+
+                if (unsaved >= MaxUnsavedEvents || Stopwatch.GetElapsedTime(lastSave) >= MaxUnsavedTime)
+                {
+                    await SaveCursor(state).ConfigureAwait(false);
+                    unsaved = 0;
+                    lastSave = Stopwatch.GetTimestamp();
+                }
             }
 
-            state.Pending.Dequeue();
-            state.Position = stored.StreamPosition;
-            ClearFailure(state);
-            await SaveCursor(state).ConfigureAwait(false);
+            return null;
         }
-
-        return null;
+        finally
+        {
+            if (unsaved > 0)
+            {
+                await SaveCursor(state).ConfigureAwait(false);
+            }
+        }
     }
 
     private async Task SaveCursor(StreamState state)

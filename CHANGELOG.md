@@ -35,6 +35,10 @@ Getting ready for 1.0: a consistent API, finished jobs cleaned up, instant wake-
   - The failures guide explains that after a hard kill the next start waits for `HandlerLease` (30 seconds) before its handlers run, and how to shorten it.
   - The sync guide says what the server checks (who a device is, and that its events carry its own name) and what it does not yet (which streams a device may write to), and shows checking `EventContext.Origin`.
 
+### Faster
+
+- A handler saves its progress in a stream in groups (after at most 100 events or 200 ms, and at once when the stream catches up, an event fails, or the app stops normally) instead of after every event. A backlog in one stream is handled about 30 times faster: from 1,339 to 41,064 events per second on SQLite and from 465 to 16,232 on PostgreSQL (a handler that does nothing, one machine). After a crash, the events handled in the last moments (at most 100 per stream) can be delivered again, which the at-least-once rule already allows.
+
 ### Fixed
 
 - Sync: when the server refused a push, the device also stopped receiving, because the pull ran only after a successful push. Push and pull now run independently, so a problem in one direction no longer stops the other. The status still reports the error.
