@@ -4,7 +4,9 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-Planned as `0.7.0-alpha`. A round of hardening found by building a complete example shop (a cloud API and desktop tills), then a round of simplifying: much faster delivery, handlers and jobs that heal when stuck or after a crash, a limit on what devices may write, and events that can be saved together.
+## [0.7.0-alpha] - 2026-10-24
+
+A round of hardening found by building a complete example shop (a cloud API and desktop tills), then a round of simplifying: much faster delivery, handlers and jobs that heal when stuck or after a crash, a limit on what devices may write, and events that can be saved together.
 
 ### Added
 
@@ -160,7 +162,8 @@ First preview. Events only, with the in-memory store.
 
 - `IPulse.Enqueue` throws `NotSupportedException`. Jobs arrive in 0.2.
 
-[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.6.0-alpha...HEAD
+[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.7.0-alpha...HEAD
+[0.7.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.6.0-alpha...v0.7.0-alpha
 [0.6.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.5.0-alpha...v0.6.0-alpha
 [0.5.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.4.0-alpha...v0.5.0-alpha
 [0.4.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.3.0-alpha...v0.4.0-alpha

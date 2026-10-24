@@ -11,7 +11,7 @@
 
 <!-- package readme: everything below this line is also the README on nuget.org, which shows Markdown only. -->
 
-> **Status: preview (`0.6`).** Events and jobs work with the in-memory, **SQLite** and **PostgreSQL** stores, and devices sync their events with a server. See the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap). The API may change before `1.0`.
+> **Status: preview (`0.7`).** Events and jobs work with the in-memory, **SQLite** and **PostgreSQL** stores, and devices sync their events with a server. See the [roadmap](https://pulsesharp.github.io/pulsesharp/concepts/vision#roadmap). The API may change before `1.0`.
 
 ## What is PulseSharp?
 
