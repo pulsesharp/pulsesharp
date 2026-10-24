@@ -3,11 +3,12 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using PulseSharp.Stores;
 
 namespace PulseSharp.Sync.Server;
 
-internal sealed class SyncEndpoint(SyncServerOptions options, ISyncStore store, Func<string> node)
+internal sealed class SyncEndpoint(SyncServerOptions options, ISyncStore store, Func<string> node, ILogger logger)
 {
     private const int DefaultPullSize = 200;
 
@@ -47,6 +48,9 @@ internal sealed class SyncEndpoint(SyncServerOptions options, ISyncStore store, 
             return;
         }
 
+        var allowedStreams = options.PushStreamsFor(caller.Node!);
+        var accepted = new List<WireEvent>(request.Events.Count);
+        var refusedStreams = new List<string>();
         foreach (var wire in request.Events)
         {
             if (string.IsNullOrWhiteSpace(wire.Stream) || string.IsNullOrWhiteSpace(wire.Name))
@@ -64,14 +68,28 @@ internal sealed class SyncEndpoint(SyncServerOptions options, ISyncStore store, 
                 ).ConfigureAwait(false);
                 return;
             }
+
+            if (allowedStreams is null || allowedStreams.Any(prefix => wire.Stream.StartsWith(prefix, StringComparison.Ordinal)))
+            {
+                accepted.Add(wire);
+            }
+            else
+            {
+                refusedStreams.Add(wire.Stream);
+            }
         }
 
-        var saved = await store
-            .AppendReplicated(request.Events.Select(wire => wire.ToNewEvent()).ToList(), context.RequestAborted)
-            .ConfigureAwait(false);
+        if (refusedStreams.Count > 0)
+        {
+            Log.PushRefused(logger, caller.Node!, refusedStreams.Count, refusedStreams[0], string.Join(", ", allowedStreams ?? []));
+        }
+
+        var saved = accepted.Count == 0
+            ? []
+            : await store.AppendReplicated(accepted.Select(wire => wire.ToNewEvent()).ToList(), context.RequestAborted).ConfigureAwait(false);
 
         await context.Response
-            .WriteAsJsonAsync(new PushResponse(saved.Count, request.Events.Count - saved.Count), WireJson.Default.PushResponse)
+            .WriteAsJsonAsync(new PushResponse(saved.Count, accepted.Count - saved.Count, refusedStreams.Count), WireJson.Default.PushResponse)
             .ConfigureAwait(false);
     }
 

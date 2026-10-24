@@ -75,6 +75,24 @@ public static class PulseExtensions
         return pulse.Enqueue(job, new EnqueueOptions { RunAt = runAt }, cancellationToken);
     }
 
+    /// <summary>
+    /// Saves several events to one stream in one commit: all of them, in the order given, or none.
+    /// </summary>
+    /// <param name="pulse">The pulse.</param>
+    /// <param name="stream">The stream the events belong to.</param>
+    /// <param name="events">The events. They may be of different types.</param>
+    /// <returns>The id and stream position of the last event.</returns>
+    /// <example>
+    /// <code>
+    /// await pulse.EmitAll("Menu", new ProductAdded("tea", 2.50m), new ProductAdded("coffee", 3.20m));
+    /// </code>
+    /// </example>
+    public static Task<EmitResult> EmitAll(this IPulse pulse, StreamName stream, params object[] events)
+    {
+        ArgumentNullException.ThrowIfNull(pulse);
+        return pulse.EmitAll(stream, (IReadOnlyList<object>)events);
+    }
+
     private static class DefaultStream<TEvent>
     {
         public static readonly StreamName Name = StreamName.From(

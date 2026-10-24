@@ -4,12 +4,20 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-## [0.6.0-alpha] - 2026-10-20
+## [0.6.0-alpha] - 2026-10-24
 
-Getting ready for 1.0: a consistent API, finished jobs cleaned up, instant wake-ups between PostgreSQL app instances, and the new `PulseSharp.Testing` package. Renames are listed old → new.
+Getting ready for 1.0: a consistent API, finished jobs cleaned up, instant wake-ups between PostgreSQL app instances, the new `PulseSharp.Testing` package, and a round of hardening found by building a complete example shop (a cloud API and desktop tills): much faster delivery, handlers and jobs that heal when stuck or after a crash, a limit on what devices may write, and events that can be saved together and cleaned up. Renames are listed old → new.
 
 ### Added
 
+- `pulse.EmitAll(stream, events)`: saves several events to one stream in one commit, all or none, in the order given. It is also much faster than emitting one by one (on one machine, 5,000 events: 1,404 to 13,731 per second on SQLite, 411 to 14,190 on PostgreSQL, in groups of 100). Works with `EmitOptions` (the expected version and the transaction apply to the whole group) and in `FakePulse` and `PulseTestHost`. `IPulse` has two new methods, so a class that implements `IPulse` must add them.
+- **Store authors:** `IPulseStore.AppendAll(events, expectedVersion, transaction)`, `IPulseStore.SaveCursors(cursors, revision)` and `IPulseStore.DeleteHandledEvents(...)`, with conformance tests.
+- `Advanced.HandlerTimeout` (5 minutes) and `Advanced.JobTimeout` (1 hour): a handler or job that takes longer is cancelled, and abandoned when it does not stop within 10 poll intervals. The attempt counts as failed ("took longer than ... raise Advanced.HandlerTimeout") and is retried as usual, so a hanging handler can no longer block its stream for good. `null` sets no limit.
+- Fast recovery after a crash: when the previous holder of a handler (or a running job) was a process on the same machine that is gone, the restarted app takes over at once instead of waiting for the lease. `Advanced.HandlerLease` is now 10 seconds (it was 30) for every other case. **Store authors:** `HandlerLeaseStatus.Owner` tells who holds a lease.
+- `Advanced.KeepEvents`: deletes old events that every listening handler has handled and, when the app syncs, that were sent to the server. The newest event of each stream always stays. `null` (the default) keeps every event. **Store authors:** `EventListener`.
+- Sync server: `server.PushStreams(node => [...])` says which streams each device may write, and `server.PushAnyStream()` allows all. An event for another stream is refused (the server logs a warning, the device logs one too), the device's other events are saved, and a refused event never blocks the ones behind it.
+- Sync status: `SyncStatus.Waiting` (how many events the server has not confirmed, also after a restart that starts offline) and `IPulseSync.StatusChanged`, so a screen needs no polling. **Store authors:** `ISyncStore.CountForSync`.
+- Sync sends a saved event at once while online (a short wait gathers a burst), and events received from the server wake the handlers at once. While the server cannot be reached, sync still backs off.
 - `services.AddPulseSharpInMemory(pulse => …)`: the in-memory store in one call, like `AddPulseSharpSqlite` and `AddPulseSharpPostgreSql`.
 - `IPulseControl.RetryFailed(handlerName = null)`: tries every failed stream again at once, for one handler or all, and returns how many.
 - Finished jobs are cleaned up: jobs that succeeded or were cancelled are deleted 7 days after they finished (`pulse.Advanced.KeepFinishedJobs`, `null` keeps every job). Failed jobs are kept until retried. The app instance that runs jobs does it about once an hour.
@@ -24,6 +32,7 @@ Getting ready for 1.0: a consistent API, finished jobs cleaned up, instant wake-
 
 ### Changed
 
+- **Breaking:** `UseSyncServer` must say which streams devices may write: `PushStreams(...)` or `PushAnyStream()`. The app stops at startup with a message when neither is there, so a device can never write into the server's own streams by accident.
 - `UseSqlite` and `new SqliteStore(…)` accept a file name (`"app.db"`) as well as a connection string, like `AddPulseSharpSqlite`.
 - **Breaking:** `PostgresStore` → `PostgreSqlStore`.
 - **Breaking:** `JobInfo.Id` → `JobInfo.JobId`, and for store authors `StoredJob.Id` → `StoredJob.JobId`, so a job's id has one name everywhere.
@@ -37,10 +46,13 @@ Getting ready for 1.0: a consistent API, finished jobs cleaned up, instant wake-
 
 ### Faster
 
-- A handler saves its progress in a stream in groups (after at most 100 events or 200 ms, and at once when the stream catches up, an event fails, or the app stops normally) instead of after every event. A backlog in one stream is handled about 30 times faster: from 1,339 to 41,064 events per second on SQLite and from 465 to 16,232 on PostgreSQL (a handler that does nothing, one machine). After a crash, the events handled in the last moments (at most 100 per stream) can be delivered again, which the at-least-once rule already allows.
+- A handler saves its progress in groups, one commit for all the streams it works on (after at most 100 handled events or 200 ms, at the end of every round, when an event fails, and when the app stops normally), instead of one commit per event. On one machine, with a handler that does nothing: a backlog in one stream goes from 1,339 to over 27,000 events per second on SQLite and from 465 to over 12,000 on PostgreSQL; 5,000 streams of one event each go from 1,377 to over 18,000 per second on SQLite and from 1,505 to about 4,800 on PostgreSQL. After a crash, the events handled in the last moments (at most 100 per handler) can be delivered again, which the at-least-once rule already allows.
+- **Store authors:** `IPulseStore.SaveCursors(cursors, revision)` saves several cursors in one commit, with the same revision check as `SaveCursor`.
+- `Advanced.MaxParallelStreams` is now 8 by default (it was 4).
 
 ### Fixed
 
+- A handler could deliver events again after a retry, skip or rewind: when `IPulseControl` changed the handler at the moment an app instance picked it up, the instance could end up with fresh cursors tagged with an old revision, so its first progress save was refused and it started over. The revision is now checked again after the cursors are loaded.
 - Sync: when the server refused a push, the device also stopped receiving, because the pull ran only after a successful push. Push and pull now run independently, so a problem in one direction no longer stops the other. The status still reports the error.
 - Sync is now tested against lost connections: a lost answer to a push (also in the middle of a large backlog), a lost answer to a pull, and an error returned after the server saved the events. Nothing is lost and nothing is handled twice.
 

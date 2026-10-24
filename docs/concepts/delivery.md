@@ -19,7 +19,7 @@ A handler finishes its work, then PulseSharp moves the handler's cursor. If the 
 
 **What you do:** make handlers idempotent. Store `context.EventId` with the data you write, or use naturally repeatable writes (`UPDATE … SET status = 'shipped'`).
 
-To keep a backlog fast, PulseSharp saves a handler's progress in a stream in groups: after at most 100 events or 200 milliseconds, and at once when the stream catches up, when an event fails, and when the app stops normally. So after a crash, the events handled in the last moments (never more than 100 per stream) can arrive again. In our measurement, a handler that does nothing worked through a backlog in one stream at over 16,000 events per second on PostgreSQL, against about 460 when progress was saved after every event.
+To keep a backlog fast, PulseSharp saves a handler's progress in groups, one commit for all the streams the handler is working on: after at most 100 handled events or 200 milliseconds, at the end of every round, when an event fails, and when the app stops normally. So after a crash, the events handled in the last moments (never more than 100 per handler) can arrive again. In our measurement, a handler that does nothing worked through 5,000 events at over 12,000 per second in one stream and about 4,800 per second across 5,000 streams on PostgreSQL, against about 460 and 1,500 when progress was saved after every event.
 
 ## Jobs
 
@@ -38,7 +38,7 @@ The in-memory store keeps everything in the process. When the app stops, events,
 
 ## Several app instances
 
-With a shared database store (PostgreSQL), every guarantee above holds across instances: one instance at a time delivers a handler (it holds a lease), and each job is claimed by one instance. If an instance crashes in the middle of an event, another takes over after `Advanced.HandlerLease`, and that event may be delivered again - the at-least-once rule.
+With a shared database store (PostgreSQL), every guarantee above holds across instances: one instance at a time delivers a handler (it holds a lease), and each job is claimed by one instance. If an instance crashes in the middle of an event, another takes over after `Advanced.HandlerLease` (at once, when the crashed instance ran on the same machine), and that event may be delivered again - the at-least-once rule.
 
 ## Graceful shutdown
 

@@ -52,6 +52,47 @@ internal sealed class InMemoryStore : ISyncStore
         }
     }
 
+    public Task<IReadOnlyList<StoredEvent>> AppendAll(
+        IReadOnlyList<NewEvent> events,
+        ExpectedVersion expectedVersion,
+        DbTransaction? transaction,
+        CancellationToken cancellationToken
+    )
+    {
+        lock (_gate)
+        {
+            var stream = events[0].Stream;
+            _streamPositions.TryGetValue(stream, out var currentPosition);
+            if (!expectedVersion.Allows(currentPosition))
+            {
+                throw new ExpectedVersionMismatchException(stream, expectedVersion, currentPosition);
+            }
+
+            var saved = new List<StoredEvent>(events.Count);
+            foreach (var newEvent in events)
+            {
+                currentPosition++;
+                var stored = new StoredEvent(
+                    GlobalPosition: _events.Count + 1,
+                    EventId: newEvent.EventId,
+                    Stream: stream,
+                    StreamPosition: currentPosition,
+                    EventName: newEvent.EventName,
+                    Data: newEvent.Data,
+                    Origin: newEvent.Origin,
+                    EmittedAt: newEvent.EmittedAt
+                );
+
+                _events.Add(stored);
+                _eventIds.Add(stored.EventId);
+                saved.Add(stored);
+            }
+
+            _streamPositions[stream] = currentPosition;
+            return Task.FromResult<IReadOnlyList<StoredEvent>>(saved);
+        }
+    }
+
     public Task<IReadOnlyList<StoredEvent>> AppendReplicated(IReadOnlyList<NewEvent> events, CancellationToken cancellationToken)
     {
         var saved = new List<StoredEvent>();
@@ -83,6 +124,29 @@ internal sealed class InMemoryStore : ISyncStore
         }
 
         return Task.FromResult<IReadOnlyList<StoredEvent>>(saved);
+    }
+
+    public Task<int> CountForSync(SyncQuery query, CancellationToken cancellationToken)
+    {
+        var count = 0;
+        lock (_gate)
+        {
+            for (var index = (int)query.AfterPosition; index < _events.Count && count < query.MaxCount; index++)
+            {
+                var stored = _events[index];
+                var matchesOrigin = query.Origin is null || stored.Origin == query.Origin;
+                var matchesExcept = query.ExceptOrigin is null || stored.Origin != query.ExceptOrigin;
+                var matchesStream = query.StreamPrefixes.Count == 0
+                    || query.StreamPrefixes.Any(prefix => stored.Stream.StartsWith(prefix, StringComparison.Ordinal));
+
+                if (matchesOrigin && matchesExcept && matchesStream)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return Task.FromResult(count);
     }
 
     public Task<IReadOnlyList<StoredEvent>> ReadForSync(SyncQuery query, CancellationToken cancellationToken)
@@ -172,6 +236,29 @@ internal sealed class InMemoryStore : ISyncStore
         }
     }
 
+    public Task<bool> SaveCursors(IReadOnlyList<HandlerCursor> cursors, long revision, CancellationToken cancellationToken)
+    {
+        if (cursors.Count == 0)
+        {
+            return Task.FromResult(true);
+        }
+
+        lock (_gate)
+        {
+            if (!_handlers.TryGetValue(cursors[0].HandlerName, out var handler) || handler.Revision != revision)
+            {
+                return Task.FromResult(false);
+            }
+
+            foreach (var cursor in cursors)
+            {
+                _cursors[(cursor.HandlerName, cursor.Stream)] = cursor;
+            }
+
+            return Task.FromResult(true);
+        }
+    }
+
     public Task<HandlerLeaseStatus> LeaseHandler(
         string handlerName,
         string workerId,
@@ -190,7 +277,7 @@ internal sealed class InMemoryStore : ISyncStore
             }
 
             _handlers[handlerName] = handler;
-            return Task.FromResult(new HandlerLeaseStatus(free, handler.Revision));
+            return Task.FromResult(new HandlerLeaseStatus(free, handler.Revision, handler.Owner));
         }
     }
 
@@ -402,6 +489,18 @@ internal sealed class InMemoryStore : ISyncStore
 
             return Task.FromResult(false);
         }
+    }
+
+    public Task<int> DeleteHandledEvents(
+        DateTimeOffset emittedBefore,
+        IReadOnlyList<EventListener> listeners,
+        string ownNode,
+        long? ownEventsSentUpTo,
+        int maxCount,
+        CancellationToken cancellationToken
+    )
+    {
+        return Task.FromResult(0);
     }
 
     public Task<int> DeleteFinishedJobs(DateTimeOffset finishedBefore, int maxCount, CancellationToken cancellationToken)

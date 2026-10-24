@@ -59,7 +59,7 @@ Assert.Equal((3, 3), context.LastProgress);
 
 | Check | Passes when |
 |---|---|
-| `pulse.Emitted<T>()` | exactly one `T` was emitted. Returns it |
+| `pulse.Emitted<T>()` | exactly one `T` was emitted. Returns it. Events saved with `EmitAll` count one by one |
 | `pulse.Emitted<T>("Sale-7")` | exactly one `T` was emitted to that stream. Returns it |
 | `pulse.Emitted(event)` | exactly one equal event was emitted. Records compare by value, classes by their JSON |
 | `pulse.Emitted<T>(e => …)` | exactly one `T` matches. Returns it |

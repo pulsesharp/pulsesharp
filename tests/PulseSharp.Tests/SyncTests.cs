@@ -106,7 +106,7 @@ public sealed partial class SyncTests
     [Fact]
     public async Task TheServerDecidesWhatANodeMayReceive()
     {
-        await using var cloud = await SyncCloud.Start(server => server.AllowNode("till-1", "key-1", "Product-"));
+        await using var cloud = await SyncCloud.Start(server => server.AllowNode("till-1", "key-1", "Product-").PushAnyStream());
         await using var till = await SyncDevice.Start("till-1", cloud.CreateHandler());
         await using var greedy = await SyncDevice.Start("till-1", cloud.CreateHandler(), sync => sync.PullStreams.Add("Secret-"));
 
@@ -226,7 +226,7 @@ public sealed partial class SyncTests
     [Fact]
     public async Task RefusesAServerWithTheSameNodeName()
     {
-        await using var cloud = await SyncCloud.Start(server => server.AllowNode("cloud", "key-1"));
+        await using var cloud = await SyncCloud.Start(server => server.AllowNode("cloud", "key-1").PushAnyStream());
         await using var device = await SyncDevice.Start("cloud", cloud.CreateHandler());
 
         var status = await device.Sync.SyncNow();
@@ -354,7 +354,7 @@ public sealed partial class SyncTests
                 pulse.Node = "cloud";
                 pulse.Advanced.PollInterval = TimeSpan.FromMilliseconds(50);
                 pulse.When<SaleCompleted>(sale => sales.Enqueue(sale));
-                pulse.UseSyncServer(configure ?? (server => server.AllowNode("till-1", "key-1").AllowNode("till-2", "key-2")));
+                pulse.UseSyncServer(configure ?? (server => server.AllowNode("till-1", "key-1").AllowNode("till-2", "key-2").PushAnyStream()));
             });
 
             var app = builder.Build();

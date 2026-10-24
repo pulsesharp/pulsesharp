@@ -62,6 +62,46 @@ public sealed class SqliteStore : ISyncStore
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<StoredEvent>> AppendAll(
+        IReadOnlyList<NewEvent> events,
+        ExpectedVersion expectedVersion,
+        DbTransaction? transaction,
+        CancellationToken cancellationToken
+    )
+    {
+        if (transaction is not null)
+        {
+            var outer = OuterTransaction(transaction);
+            await EnsureSchema(cancellationToken).ConfigureAwait(false);
+            return await AppendAllIn(outer.Connection!, outer, events, expectedVersion, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var connection = await Open(cancellationToken).ConfigureAwait(false);
+        await using var own = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var stored = await AppendAllIn(connection, own, events, expectedVersion, cancellationToken).ConfigureAwait(false);
+        await own.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return stored;
+    }
+
+    private async Task<IReadOnlyList<StoredEvent>> AppendAllIn(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        IReadOnlyList<NewEvent> events,
+        ExpectedVersion expectedVersion,
+        CancellationToken cancellationToken
+    )
+    {
+        var saved = new List<StoredEvent>(events.Count);
+        for (var index = 0; index < events.Count; index++)
+        {
+            var expected = index == 0 ? expectedVersion : ExpectedVersion.Any;
+            saved.Add(await AppendIn(connection, transaction, events[index], expected, cancellationToken).ConfigureAwait(false));
+        }
+
+        return saved;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<StoredEvent>> ReadAfter(
         long globalPosition,
         IReadOnlySet<string> eventNames,
@@ -148,6 +188,54 @@ public sealed class SqliteStore : ISyncStore
     }
 
     /// <inheritdoc />
+    public async Task<bool> SaveCursors(IReadOnlyList<HandlerCursor> cursors, long revision, CancellationToken cancellationToken)
+    {
+        if (cursors.Count == 0)
+        {
+            return true;
+        }
+
+        await using var connection = await Open(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (var check = connection.CreateCommand())
+        {
+            check.Transaction = transaction;
+            check.CommandText = "UPDATE pulsesharp_handlers SET revision = revision WHERE handler_name = $handler AND revision = $revision;";
+            check.Parameters.AddWithValue("$handler", cursors[0].HandlerName);
+            check.Parameters.AddWithValue("$revision", revision);
+            if (await check.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
+            {
+                return false;
+            }
+        }
+
+        foreach (var cursor in cursors)
+        {
+            await using var save = connection.CreateCommand();
+            save.Transaction = transaction;
+            save.CommandText = """
+                INSERT INTO pulsesharp_cursors (handler_name, stream, position, state, attempts, last_error, retry_at)
+                VALUES ($handler, $stream, $position, $state, $attempts, $error, $retryAt)
+                ON CONFLICT (handler_name, stream) DO UPDATE SET
+                    position = excluded.position, state = excluded.state, attempts = excluded.attempts,
+                    last_error = excluded.last_error, retry_at = excluded.retry_at;
+                """;
+            save.Parameters.AddWithValue("$handler", cursor.HandlerName);
+            save.Parameters.AddWithValue("$stream", cursor.Stream);
+            save.Parameters.AddWithValue("$position", cursor.Position);
+            save.Parameters.AddWithValue("$state", (int)cursor.State);
+            save.Parameters.AddWithValue("$attempts", cursor.Attempts);
+            save.Parameters.AddWithValue("$error", NullableValue(cursor.LastError));
+            save.Parameters.AddWithValue("$retryAt", NullableTicks(cursor.RetryAt));
+            await save.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <inheritdoc />
     public async Task<HandlerLeaseStatus> LeaseHandler(
         string handlerName,
         string workerId,
@@ -168,7 +256,7 @@ public sealed class SqliteStore : ISyncStore
             UPDATE pulsesharp_handlers SET lease_owner = $worker, lease_until = $until
             WHERE handler_name = $handler AND (lease_owner IS NULL OR lease_owner = $worker OR lease_until < $now);
 
-            SELECT lease_owner = $worker, revision FROM pulsesharp_handlers WHERE handler_name = $handler;
+            SELECT lease_owner = $worker, revision, lease_owner FROM pulsesharp_handlers WHERE handler_name = $handler;
             """;
         command.Parameters.AddWithValue("$handler", handlerName);
         command.Parameters.AddWithValue("$worker", workerId);
@@ -179,7 +267,7 @@ public sealed class SqliteStore : ISyncStore
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-            status = new HandlerLeaseStatus(Held: reader.GetInt64(0) != 0, Revision: reader.GetInt64(1));
+            status = new HandlerLeaseStatus(Held: reader.GetInt64(0) != 0, Revision: reader.GetInt64(1), Owner: reader.IsDBNull(2) ? null : reader.GetString(2));
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -339,6 +427,28 @@ public sealed class SqliteStore : ISyncStore
         command.Parameters.AddWithValue("$except", NullableValue(query.ExceptOrigin));
         command.Parameters.AddWithValue("$max", query.MaxCount);
         return await ReadEvents(command, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> CountForSync(SyncQuery query, CancellationToken cancellationToken)
+    {
+        await using var connection = await Open(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT COUNT(*) FROM (
+                SELECT 1 FROM pulsesharp_events
+                WHERE global_position > $after
+                  AND ($origin IS NULL OR origin = $origin)
+                  AND ($except IS NULL OR origin <> $except)
+                  {PrefixCondition(command, query.StreamPrefixes)}
+                LIMIT $max
+            );
+            """;
+        command.Parameters.AddWithValue("$after", query.AfterPosition);
+        command.Parameters.AddWithValue("$origin", NullableValue(query.Origin));
+        command.Parameters.AddWithValue("$except", NullableValue(query.ExceptOrigin));
+        command.Parameters.AddWithValue("$max", query.MaxCount);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <inheritdoc />
@@ -559,6 +669,51 @@ public sealed class SqliteStore : ISyncStore
             cancellationToken
         ).ConfigureAwait(false);
         return changed > 0;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteHandledEvents(
+        DateTimeOffset emittedBefore,
+        IReadOnlyList<EventListener> listeners,
+        string ownNode,
+        long? ownEventsSentUpTo,
+        int maxCount,
+        CancellationToken cancellationToken
+    )
+    {
+        await using var connection = await Open(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+
+        var rows = new System.Text.StringBuilder();
+        for (var index = 0; index < listeners.Count; index++)
+        {
+            rows.Append(index == 0 ? string.Empty : ", ").Append($"($handler{index}, $event{index})");
+            command.Parameters.AddWithValue($"$handler{index}", listeners[index].HandlerName);
+            command.Parameters.AddWithValue($"$event{index}", listeners[index].EventName);
+        }
+
+        var listenerRows = listeners.Count == 0 ? "SELECT NULL, NULL WHERE 0" : $"VALUES {rows}";
+        command.CommandText = $"""
+            WITH listener(handler, name) AS ({listenerRows})
+            DELETE FROM pulsesharp_events WHERE global_position IN (
+                SELECT e.global_position FROM pulsesharp_events e
+                WHERE e.emitted_at < $before
+                  AND e.stream_position < (SELECT MAX(x.stream_position) FROM pulsesharp_events x WHERE x.stream = e.stream)
+                  AND ($sentUpTo IS NULL OR e.origin <> $node OR e.global_position <= $sentUpTo)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM listener l
+                      WHERE l.name = e.event_name
+                        AND COALESCE((SELECT c.position FROM pulsesharp_cursors c WHERE c.handler_name = l.handler AND c.stream = e.stream), 0) < e.stream_position
+                  )
+                ORDER BY e.global_position
+                LIMIT $max
+            );
+            """;
+        command.Parameters.AddWithValue("$before", emittedBefore.UtcTicks);
+        command.Parameters.AddWithValue("$node", ownNode);
+        command.Parameters.AddWithValue("$sentUpTo", (object?)ownEventsSentUpTo ?? DBNull.Value);
+        command.Parameters.AddWithValue("$max", maxCount);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

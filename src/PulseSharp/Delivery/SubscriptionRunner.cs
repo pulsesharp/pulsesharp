@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using PulseSharp.Stores;
 
@@ -15,12 +14,11 @@ internal sealed class SubscriptionRunner(
 )
 {
     private const int ReadBatchSize = 500;
-    private const int MaxUnsavedEvents = 100;
-
-    private static readonly TimeSpan MaxUnsavedTime = TimeSpan.FromMilliseconds(200);
 
     private readonly Dictionary<string, StreamState> _streams = new(StringComparer.Ordinal);
-    private readonly string _workerId = $"{settings.Node}:{Guid.NewGuid():N}";
+    private readonly string _workerId = WorkerIds.Create(settings.Node);
+    private readonly CursorBatch _unsaved = new();
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
     private long _scanPosition;
     private long? _revision;
     private CancellationTokenSource? _delivery;
@@ -92,17 +90,36 @@ internal sealed class SubscriptionRunner(
             .LeaseHandler(subscription.Name, _workerId, time.GetUtcNow(), settings.HandlerLease, cancellationToken)
             .ConfigureAwait(false);
 
+        if (!lease.Held && WorkerIds.IsGoneFromThisMachine(lease.Owner))
+        {
+            Log.HandlerTakenOver(logger, subscription.Name, lease.Owner!);
+            await store.ReleaseHandler(subscription.Name, lease.Owner!, cancellationToken).ConfigureAwait(false);
+            lease = await store
+                .LeaseHandler(subscription.Name, _workerId, time.GetUtcNow(), settings.HandlerLease, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (!lease.Held)
         {
             Forget();
             return false;
         }
 
-        if (_revision != lease.Revision)
+        while (_revision != lease.Revision)
         {
             Forget();
             await LoadCursors(cancellationToken).ConfigureAwait(false);
             _revision = lease.Revision;
+
+            lease = await store
+                .LeaseHandler(subscription.Name, _workerId, time.GetUtcNow(), settings.HandlerLease, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!lease.Held)
+            {
+                Forget();
+                return false;
+            }
         }
 
         return true;
@@ -154,6 +171,7 @@ internal sealed class SubscriptionRunner(
         _revision = null;
         _scanPosition = 0;
         _streams.Clear();
+        _unsaved.Clear();
     }
 
     private async Task LoadCursors(CancellationToken cancellationToken)
@@ -230,76 +248,102 @@ internal sealed class SubscriptionRunner(
     private async Task<DateTimeOffset?[]> DeliverStreams(List<StreamState> ready, CancellationToken cancellationToken)
     {
         var retries = new DateTimeOffset?[ready.Count];
-        if (ready.Count == 1)
+
+        try
         {
-            retries[0] = await DeliverStream(ready[0], cancellationToken).ConfigureAwait(false);
+            if (ready.Count == 1)
+            {
+                retries[0] = await DeliverStream(ready[0], cancellationToken).ConfigureAwait(false);
+                return retries;
+            }
+
+            var options = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = settings.MaxParallelStreams,
+                CancellationToken = cancellationToken
+            };
+
+            await Parallel.ForEachAsync(Enumerable.Range(0, ready.Count), options, async (index, token) =>
+            {
+                retries[index] = await DeliverStream(ready[index], token).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+
             return retries;
         }
-
-        var options = new ParallelOptions
+        finally
         {
-            MaxDegreeOfParallelism = settings.MaxParallelStreams,
-            CancellationToken = cancellationToken
-        };
-
-        await Parallel.ForEachAsync(Enumerable.Range(0, ready.Count), options, async (index, token) =>
-        {
-            retries[index] = await DeliverStream(ready[index], token).ConfigureAwait(false);
-        }).ConfigureAwait(false);
-
-        return retries;
+            await FlushCursors().ConfigureAwait(false);
+        }
     }
 
     private async Task<DateTimeOffset?> DeliverStream(StreamState state, CancellationToken cancellationToken)
     {
-        var unsaved = 0;
-        var lastSave = Stopwatch.GetTimestamp();
-
-        try
+        while (state.Pending.TryPeek(out var stored))
         {
-            while (state.Pending.TryPeek(out var stored))
+            cancellationToken.ThrowIfCancellationRequested();
+            var failure = await TryHandle(stored, state, cancellationToken).ConfigureAwait(false);
+            if (failure is not null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var failure = await TryHandle(stored, state, cancellationToken).ConfigureAwait(false);
-                if (failure is not null)
-                {
-                    unsaved = 0;
-                    return await RecordFailure(stored, state, failure, cancellationToken).ConfigureAwait(false);
-                }
-
-                state.Pending.Dequeue();
-                state.Position = stored.StreamPosition;
-                ClearFailure(state);
-                unsaved++;
-
-                if (unsaved >= MaxUnsavedEvents || Stopwatch.GetElapsedTime(lastSave) >= MaxUnsavedTime)
-                {
-                    await SaveCursor(state).ConfigureAwait(false);
-                    unsaved = 0;
-                    lastSave = Stopwatch.GetTimestamp();
-                }
+                return await RecordFailure(stored, state, failure, cancellationToken).ConfigureAwait(false);
             }
 
-            return null;
+            state.Pending.Dequeue();
+            state.Position = stored.StreamPosition;
+            ClearFailure(state);
+
+            if (_unsaved.Add(state.ToCursor(subscription.Name)))
+            {
+                await FlushCursors().ConfigureAwait(false);
+            }
+        }
+
+        return null;
+    }
+
+    private async Task FlushCursors()
+    {
+        await _saveGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var cursors = _unsaved.TakeAll();
+            if (cursors.Count == 0)
+            {
+                return;
+            }
+
+            var saved = cursors.Count == 1
+                ? await store.SaveCursor(cursors[0], _revision ?? -1, CancellationToken.None).ConfigureAwait(false)
+                : await store.SaveCursors(cursors, _revision ?? -1, CancellationToken.None).ConfigureAwait(false);
+
+            if (!saved && _delivery is { } delivery)
+            {
+                await delivery.CancelAsync().ConfigureAwait(false);
+            }
         }
         finally
         {
-            if (unsaved > 0)
-            {
-                await SaveCursor(state).ConfigureAwait(false);
-            }
+            _saveGate.Release();
         }
     }
 
     private async Task SaveCursor(StreamState state)
     {
-        var saved = await store
-            .SaveCursor(state.ToCursor(subscription.Name), _revision ?? -1, CancellationToken.None)
-            .ConfigureAwait(false);
-
-        if (!saved && _delivery is { } delivery)
+        await _saveGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            await delivery.CancelAsync().ConfigureAwait(false);
+            _unsaved.Discard(state.Stream);
+            var saved = await store
+                .SaveCursor(state.ToCursor(subscription.Name), _revision ?? -1, CancellationToken.None)
+                .ConfigureAwait(false);
+
+            if (!saved && _delivery is { } delivery)
+            {
+                await delivery.CancelAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _saveGate.Release();
         }
     }
 
@@ -328,7 +372,17 @@ internal sealed class SubscriptionRunner(
         try
         {
             var invoke = subscription.InvokerFor(stored.EventName);
-            await invoke(services, stored.Data, context, cancellationToken).ConfigureAwait(false);
+            await TimeLimit
+                .Run(
+                    token => invoke(services, stored.Data, context, token),
+                    settings.HandlerTimeout,
+                    settings.PollInterval * 10,
+                    $"Handler '{subscription.Name}'",
+                    "Advanced.HandlerTimeout",
+                    time,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
             return null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

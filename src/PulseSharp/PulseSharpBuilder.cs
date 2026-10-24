@@ -344,6 +344,13 @@ public sealed class PulseSharpBuilder
             throw new InvalidOperationException("PulseSharp: Advanced.KeepFinishedJobs must be greater than zero, or null to keep every job.");
         }
 
+        if (Advanced.HandlerTimeout <= TimeSpan.Zero || Advanced.JobTimeout <= TimeSpan.Zero || Advanced.KeepEvents <= TimeSpan.Zero)
+        {
+            throw new InvalidOperationException(
+                "PulseSharp: Advanced.HandlerTimeout, Advanced.JobTimeout and Advanced.KeepEvents must be greater than zero, or null for no limit (KeepEvents: keep every event)."
+            );
+        }
+
         return new PulseSharpSettings(
             Node,
             MaxAttempts,
@@ -354,6 +361,9 @@ public sealed class PulseSharpBuilder
             Advanced.JobLease,
             Advanced.HandlerLease,
             Advanced.KeepFinishedJobs,
+            Advanced.HandlerTimeout,
+            Advanced.JobTimeout,
+            Advanced.KeepEvents,
             _subscriptions.Values.ToList(),
             new Dictionary<string, JobRegistration>(_jobs, StringComparer.Ordinal)
         );

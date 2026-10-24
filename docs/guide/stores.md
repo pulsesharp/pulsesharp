@@ -77,7 +77,7 @@ On start, PulseSharp creates the schema and its tables, and upgrades them in lat
 
 Run as many instances of your app as you like against one database:
 
-- **Events:** each handler is delivered by **one instance at a time**. That instance holds a lease on the handler and renews it every poll interval. When it stops, another instance takes over at once; when it crashes, after `Advanced.HandlerLease` (default 30 seconds). Different handlers can run on different instances.
+- **Events:** each handler is delivered by **one instance at a time**. That instance holds a lease on the handler and renews it every poll interval. When it stops, another instance takes over at once; when it crashes, after `Advanced.HandlerLease` (default 10 seconds), or at once when the crashed instance ran on the same machine. Different handlers can run on different instances.
 - **Jobs:** every instance runs jobs. A job is claimed by exactly one instance (`FOR UPDATE SKIP LOCKED`), so instances never wait for each other.
 - **Control:** `IPulseControl` works from any instance. A retry, skip or rewind is stored, and the instance that holds the handler applies it at once.
 - **No waiting between instances:** when one instance saves an event, a job or a control change, the others are told at once (PostgreSQL `LISTEN/NOTIFY`, sent when the transaction commits), so their handlers and jobs start right away. Each instance keeps one extra connection open for this. If that connection drops, it reconnects on its own, and polling (`Advanced.PollInterval`) keeps everything moving meanwhile.
@@ -99,6 +99,29 @@ await transaction.CommitAsync(ct);
 ::: tip Keep emitting transactions short
 To make sure no reader ever skips an event, appends to one schema run one transaction at a time. A transaction that emits an event holds that turn until it commits, so keep it short: do the slow work before you open it.
 :::
+
+## Keeping the database small
+
+Events are kept forever by default, because that is the safe choice. When you don't need old events any more, tell PulseSharp how long to keep them:
+
+```csharp
+builder.Services.AddPulseSharpPostgreSql(connectionString, pulse =>
+{
+    pulse.Advanced.KeepEvents = TimeSpan.FromDays(30);
+});
+```
+
+About once an hour, the app deletes events older than that. It only deletes an event when it is safe:
+
+- **Every handler that listens to it has handled it.** An event that a handler has not reached, or that a handler stopped on, stays.
+- **It was sent to the server, when the app syncs.** A device keeps its own events until the server has them, even when it was offline for longer than `KeepEvents`.
+- **It is not the newest event of its stream.** The last event of each stream stays, so stream positions never go back and a handler can never skip a new event.
+
+Two things to keep in mind. A handler that you rewind, or add later, will not see events that were deleted. And a server that devices sync with cannot know when its devices have received an event, so choose `KeepEvents` longer than the longest a device can stay offline.
+
+Because the newest event of a stream always stays, a stream per sale keeps one row per sale for good. For events that pile up, use coarse streams, for example one per till and day (see [Streams](/guide/events#streams)). The in-memory store never deletes anything: its events disappear when the app stops.
+
+Finished jobs are cleaned up too: `Advanced.KeepFinishedJobs` (7 days by default).
 
 ## How data is stored
 

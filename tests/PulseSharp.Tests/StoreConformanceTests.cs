@@ -13,6 +13,14 @@ public abstract class StoreConformanceTests : IDisposable
 
     protected abstract ISyncStore Store { get; }
 
+    protected virtual bool DeletesEvents
+    {
+        get
+        {
+            return true;
+        }
+    }
+
     public virtual void Dispose()
     {
         GC.SuppressFinalize(this);
@@ -169,6 +177,212 @@ public abstract class StoreConformanceTests : IDisposable
     }
 
     [Fact]
+    public async Task SavesSeveralCursorsAtOnceAndOnlyWhileTheRevisionMatches()
+    {
+        var revision = (await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromSeconds(30), None)).Revision;
+        var first = new HandlerCursor("receipts", "Sale-A", 3, CursorState.Active, 0, null, null);
+        var second = new HandlerCursor("receipts", "Sale-B", 5, CursorState.Retrying, 2, "boom", Now);
+
+        Assert.True(await Store.SaveCursors([first, second], revision, None));
+        var saved = (await Store.LoadCursors("receipts", None)).OrderBy(cursor => cursor.Stream).ToList();
+
+        Assert.Equal([3, 5], saved.Select(cursor => cursor.Position));
+        Assert.Equal(CursorState.Retrying, saved[1].State);
+        Assert.Equal("boom", saved[1].LastError);
+
+        await Store.ChangeCursors("receipts", [], None);
+        var later = new HandlerCursor("receipts", "Sale-A", 9, CursorState.Active, 0, null, null);
+        var another = new HandlerCursor("receipts", "Sale-C", 1, CursorState.Active, 0, null, null);
+
+        Assert.False(await Store.SaveCursors([later, another], revision, None));
+        var afterwards = await Store.LoadCursors("receipts", None);
+        Assert.Equal(3, afterwards.Single(cursor => cursor.Stream == "Sale-A").Position);
+        Assert.DoesNotContain(afterwards, cursor => cursor.Stream == "Sale-C");
+    }
+
+    [Fact]
+    public async Task SavingNoCursorsAtOnceIsFine()
+    {
+        var revision = (await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromSeconds(30), None)).Revision;
+
+        Assert.True(await Store.SaveCursors([], revision, None));
+    }
+
+    [Fact]
+    public async Task AppendsSeveralEventsAtOnceInOrderAfterTheEventsAlreadyThere()
+    {
+        await Append("Sale-A", "SaleCompleted");
+        var group = Group("Sale-A", 3);
+
+        var saved = await Store.AppendAll(group, ExpectedVersion.Exactly(1), null, None);
+        var stream = await Store.ReadStream("Sale-A", 0, 10, None);
+
+        Assert.Equal(group.Select(newEvent => newEvent.EventId), saved.Select(stored => stored.EventId));
+        Assert.Equal([2, 3, 4], saved.Select(stored => stored.StreamPosition));
+        Assert.True(saved[0].GlobalPosition < saved[1].GlobalPosition && saved[1].GlobalPosition < saved[2].GlobalPosition);
+        Assert.Equal([1, 2, 3, 4], stream.Select(stored => stored.StreamPosition));
+        Assert.Equal(saved.Select(stored => stored.GlobalPosition), stream.Skip(1).Select(stored => stored.GlobalPosition));
+    }
+
+    [Fact]
+    public async Task SavesNoneOfTheEventsWhenTheExpectedVersionDoesNotMatch()
+    {
+        await Append("Sale-A", "SaleCompleted");
+
+        var error = await Assert.ThrowsAsync<ExpectedVersionMismatchException>(() => Store.AppendAll(Group("Sale-A", 3), ExpectedVersion.NoStream, null, None));
+
+        Assert.Equal(1, error.ActualPosition);
+        Assert.Single(await Store.ReadStream("Sale-A", 0, 10, None));
+    }
+
+    [Fact]
+    public async Task AGroupOfEventsOnANewStreamStartsAtPositionOne()
+    {
+        var saved = await Store.AppendAll(Group("Menu", 2), ExpectedVersion.NoStream, null, None);
+
+        Assert.Equal([1, 2], saved.Select(stored => stored.StreamPosition));
+    }
+
+    [Fact]
+    public async Task CountsTheEventsForSyncExactlyAsManyAsItReads()
+    {
+        await Append("Sale-till-1-a", "SaleCompleted");
+        await Store.AppendReplicated([Replicated("Sale-till-2-a", "till-2"), Replicated("Product-1", "cloud")], None);
+        await Append("Sale-till-1-b", "SaleCompleted");
+        await Append("Menu", "ProductAdded");
+        var queries = new[]
+        {
+            new SyncQuery(0, null, null, [], 100),
+            new SyncQuery(0, "till-1", null, [], 100),
+            new SyncQuery(0, null, "till-1", [], 100),
+            new SyncQuery(0, null, null, ["Sale-till-1-"], 100),
+            new SyncQuery(0, null, null, ["Sale-till-1-", "Menu"], 100),
+            new SyncQuery(2, "till-1", null, [], 100),
+            new SyncQuery(0, null, null, [], 3),
+            new SyncQuery(100, null, null, [], 100),
+        };
+
+        foreach (var query in queries)
+        {
+            var read = await Store.ReadForSync(query, None);
+            Assert.Equal(read.Count, await Store.CountForSync(query, None));
+        }
+
+        Assert.Equal(3, await Store.CountForSync(new SyncQuery(0, "till-1", null, [], 100), None));
+    }
+
+    [Fact]
+    public async Task DeletesOldEventsOnlyWhenEveryListeningHandlerHasHandledThemAndKeepsTheNewestOfEachStream()
+    {
+        Assert.SkipUnless(DeletesEvents, "This store keeps events only in memory and deletes nothing.");
+        var old = Now.AddDays(-10);
+        for (var number = 1; number <= 5; number++)
+        {
+            await AppendAt("Sale-A", "SaleCompleted", old);
+        }
+
+        await AppendAt("Menu", "SomethingNobodyListensTo", old);
+        await AppendAt("Menu", "SomethingNobodyListensTo", old);
+        await AppendAt("Fresh", "SaleCompleted", Now);
+        await AppendAt("Fresh", "SaleCompleted", Now);
+        await SetCursor("receipts", "Sale-A", 4);
+        await SetCursor("ledger", "Sale-A", 2);
+        var listeners = new[] { new EventListener("receipts", "SaleCompleted"), new EventListener("ledger", "SaleCompleted") };
+
+        var deleted = await Store.DeleteHandledEvents(Now.AddDays(-1), listeners, "cloud", null, 100, None);
+
+        Assert.Equal(3, deleted);
+        Assert.Equal([3, 4, 5], (await Store.ReadStream("Sale-A", 0, 10, None)).Select(stored => stored.StreamPosition));
+        Assert.Equal([2], (await Store.ReadStream("Menu", 0, 10, None)).Select(stored => stored.StreamPosition));
+        Assert.Equal([1, 2], (await Store.ReadStream("Fresh", 0, 10, None)).Select(stored => stored.StreamPosition));
+    }
+
+    [Fact]
+    public async Task KeepsOldEventsThatAHandlerHasNotReachedOrHasNoCursorFor()
+    {
+        Assert.SkipUnless(DeletesEvents, "This store keeps events only in memory and deletes nothing.");
+        var old = Now.AddDays(-10);
+        for (var number = 1; number <= 4; number++)
+        {
+            await AppendAt("Sale-A", "SaleCompleted", old);
+        }
+
+        var deleted = await Store.DeleteHandledEvents(Now.AddDays(-1), [new EventListener("receipts", "SaleCompleted")], "cloud", null, 100, None);
+
+        Assert.Equal(0, deleted);
+        Assert.Equal(4, (await Store.ReadStream("Sale-A", 0, 10, None)).Count);
+    }
+
+    [Fact]
+    public async Task DoesNotDeleteTheDevicesOwnEventsBeforeTheyWereSent()
+    {
+        Assert.SkipUnless(DeletesEvents, "This store keeps events only in memory and deletes nothing.");
+        var old = Now.AddDays(-10);
+        var saved = new List<StoredEvent>();
+        for (var number = 1; number <= 4; number++)
+        {
+            saved.Add(await AppendAt("Sale-till-1-a", "SaleCompleted", old, "till-1"));
+        }
+
+        await Store.AppendReplicated([Replicated("Menu", "cloud"), Replicated("Menu", "cloud")], None);
+        var sentUpToTheSecond = saved[1].GlobalPosition;
+
+        var deleted = await Store.DeleteHandledEvents(Now.AddDays(1), [], "till-1", sentUpToTheSecond, 100, None);
+
+        Assert.Equal(3, deleted);
+        Assert.Equal([3, 4], (await Store.ReadStream("Sale-till-1-a", 0, 10, None)).Select(stored => stored.StreamPosition));
+        Assert.Single(await Store.ReadStream("Menu", 0, 10, None));
+    }
+
+    [Fact]
+    public async Task WithoutSyncAllOldHandledEventsMayGoExceptTheNewestOfEachStream()
+    {
+        Assert.SkipUnless(DeletesEvents, "This store keeps events only in memory and deletes nothing.");
+        var old = Now.AddDays(-10);
+        for (var number = 1; number <= 4; number++)
+        {
+            await AppendAt("Sale-till-1-a", "SaleCompleted", old, "till-1");
+        }
+
+        var deleted = await Store.DeleteHandledEvents(Now.AddDays(-1), [], "till-1", null, 100, None);
+
+        Assert.Equal(3, deleted);
+        Assert.Equal([4], (await Store.ReadStream("Sale-till-1-a", 0, 10, None)).Select(stored => stored.StreamPosition));
+    }
+
+    [Fact]
+    public async Task DeletesAtMostTheRequestedNumberOfEventsPerCall()
+    {
+        Assert.SkipUnless(DeletesEvents, "This store keeps events only in memory and deletes nothing.");
+        for (var number = 1; number <= 10; number++)
+        {
+            await AppendAt("Sale-A", "SaleCompleted", Now.AddDays(-10));
+        }
+
+        var first = await Store.DeleteHandledEvents(Now.AddDays(-1), [], "cloud", null, 4, None);
+        var second = await Store.DeleteHandledEvents(Now.AddDays(-1), [], "cloud", null, 4, None);
+        var third = await Store.DeleteHandledEvents(Now.AddDays(-1), [], "cloud", null, 4, None);
+        var nothingLeft = await Store.DeleteHandledEvents(Now.AddDays(-1), [], "cloud", null, 4, None);
+
+        Assert.Equal((4, 4, 1, 0), (first, second, third, nothingLeft));
+    }
+
+    [Fact]
+    public async Task AStreamKeepsCountingFromItsLastPositionAfterOldEventsWereDeleted()
+    {
+        Assert.SkipUnless(DeletesEvents, "This store keeps events only in memory and deletes nothing.");
+        for (var number = 1; number <= 5; number++)
+        {
+            await AppendAt("Sale-A", "SaleCompleted", Now.AddDays(-10));
+        }
+
+        await Store.DeleteHandledEvents(Now.AddDays(-1), [], "cloud", null, 100, None);
+        var next = await AppendAt("Sale-A", "SaleCompleted", Now);
+
+        Assert.Equal(6, next.StreamPosition);
+    }
+
+    [Fact]
     public async Task GivesAHandlerLeaseToOneWorkerAtATime()
     {
         var first = await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromSeconds(30), None);
@@ -181,6 +395,21 @@ public abstract class StoreConformanceTests : IDisposable
         Assert.False(refused.Held);
         Assert.True(takenOver.Held);
         Assert.False((await Store.LeaseHandler("receipts", "worker-a", Now.AddSeconds(42), TimeSpan.FromSeconds(30), None)).Held);
+    }
+
+    [Fact]
+    public async Task TheLeaseStatusNamesTheHolderWhenSomeoneElseHoldsTheHandler()
+    {
+        var holder = await Store.LeaseHandler("receipts", "worker-a", Now, TimeSpan.FromSeconds(30), None);
+        var refused = await Store.LeaseHandler("receipts", "worker-b", Now.AddSeconds(5), TimeSpan.FromSeconds(30), None);
+
+        Assert.True(holder.Held);
+        Assert.False(refused.Held);
+        Assert.Equal("worker-a", refused.Owner);
+
+        await Store.ReleaseHandler("receipts", "worker-a", None);
+        var afterRelease = await Store.LeaseHandler("receipts", "worker-b", Now.AddSeconds(6), TimeSpan.FromSeconds(30), None);
+        Assert.True(afterRelease.Held);
     }
 
     [Fact]
@@ -403,6 +632,26 @@ public abstract class StoreConformanceTests : IDisposable
         Assert.Equal(3, (await Store.GetJobs(null, 10, None)).Count);
     }
 
+    private static List<NewEvent> Group(string stream, int count)
+    {
+        return Enumerable
+            .Range(1, count)
+            .Select(number => new NewEvent(Guid.NewGuid(), stream, "SaleCompleted", Encoding.UTF8.GetBytes($$"""{"number":{{number}}}"""), "till-1", Now))
+            .ToList();
+    }
+
+    private Task<StoredEvent> AppendAt(string stream, string eventName, DateTimeOffset emittedAt, string origin = "cloud")
+    {
+        var newEvent = new NewEvent(Guid.NewGuid(), stream, eventName, "{}"u8.ToArray(), origin, emittedAt);
+        return Store.Append(newEvent, ExpectedVersion.Any, null, None);
+    }
+
+    private async Task SetCursor(string handler, string stream, long position)
+    {
+        var revision = (await Store.LeaseHandler(handler, "worker-a", Now, TimeSpan.FromMinutes(5), None)).Revision;
+        await Store.SaveCursor(new HandlerCursor(handler, stream, position, CursorState.Active, 0, null, null), revision, None);
+    }
+
     protected Task<StoredEvent> Append(string stream, string eventName, ExpectedVersion expected = default, string data = "{}")
     {
         var newEvent = new NewEvent(Guid.NewGuid(), stream, eventName, Encoding.UTF8.GetBytes(data), "till-1", Now);
@@ -433,6 +682,24 @@ public abstract class StoreConformanceTests : IDisposable
 public sealed class InMemoryStoreTests : StoreConformanceTests
 {
     protected override ISyncStore Store { get; } = new InMemoryStore();
+
+    protected override bool DeletesEvents
+    {
+        get
+        {
+            return false;
+        }
+    }
+
+    [Fact]
+    public async Task TheInMemoryStoreDeletesNoEvents()
+    {
+        await Append("Sale-A", "SaleCompleted");
+        await Append("Sale-A", "SaleCompleted");
+
+        Assert.Equal(0, await Store.DeleteHandledEvents(Now.AddDays(1), [], "cloud", null, 100, CancellationToken.None));
+        Assert.Equal(2, (await Store.ReadStream("Sale-A", 0, 10, CancellationToken.None)).Count);
+    }
 }
 
 public sealed class SqliteStoreTests : StoreConformanceTests

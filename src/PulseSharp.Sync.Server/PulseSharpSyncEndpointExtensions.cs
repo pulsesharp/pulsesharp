@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using PulseSharp;
 using PulseSharp.Stores;
 using PulseSharp.Sync.Server;
@@ -32,7 +33,8 @@ public static class PulseSharpSyncEndpointExtensions
             $"Sync needs a store that supports it, and {store.GetType().Name} does not. The in-memory, SQLite and PostgreSQL stores all do."
         );
 
-        var endpoint = new SyncEndpoint(setup.Options, syncStore, setup.Node);
+        var logger = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("PulseSharp.Sync.Server");
+        var endpoint = new SyncEndpoint(setup.Options, syncStore, setup.Node, logger);
         var group = endpoints.MapGroup(pattern);
         group.MapGet("info", (RequestDelegate)endpoint.Info);
         group.MapPost("push", (RequestDelegate)endpoint.Push);

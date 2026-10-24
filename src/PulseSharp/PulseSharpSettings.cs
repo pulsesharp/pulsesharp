@@ -13,6 +13,9 @@ internal sealed record PulseSharpSettings(
     TimeSpan JobLease,
     TimeSpan HandlerLease,
     TimeSpan? KeepFinishedJobs,
+    TimeSpan? HandlerTimeout,
+    TimeSpan? JobTimeout,
+    TimeSpan? KeepEvents,
     IReadOnlyList<Subscription> Subscriptions,
     IReadOnlyDictionary<string, JobRegistration> Jobs
 )

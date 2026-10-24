@@ -76,7 +76,8 @@ async Task<WebApplication> StartCloud()
         pulse.Node = "cloud";
         pulse.UseSyncServer(server => server
             .AllowNode("till-1", "till-1-secret")
-            .AllowNode("till-2", "till-2-secret"));
+            .AllowNode("till-2", "till-2-secret")
+            .PushStreams(node => [$"Sale-{node}-"]));
 
         pulse.When<SaleCompleted>(async sale =>
         {

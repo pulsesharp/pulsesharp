@@ -77,7 +77,7 @@ public partial class App
 Handlers run on background threads. To update the UI from a handler, marshal to the UI thread (`Dispatcher.InvokeAsync` in WPF, `Dispatcher.UIThread.Post` in Avalonia).
 
 ::: tip Offline-first desktop apps
-With `pulse.UseSqlite("Data Source=pos.db")`, a desktop app keeps its events and jobs on disk and continues after a restart - see [Stores](/guide/stores). Device ↔ cloud sync (0.5) will then send them to the server when the device is online. If the app is killed instead of closed, its handlers start again after 30 seconds: see [When an app stops suddenly](/guide/failures#when-an-app-stops-suddenly).
+With `pulse.UseSqlite("Data Source=pos.db")`, a desktop app keeps its events and jobs on disk and continues after a restart - see [Stores](/guide/stores). Device ↔ cloud sync (0.5) will then send them to the server when the device is online. If the app is killed instead of closed, its handlers start again at once when the app restarts on the same machine: see [When an app stops suddenly](/guide/failures#when-an-app-stops-suddenly).
 :::
 
 ## Console app

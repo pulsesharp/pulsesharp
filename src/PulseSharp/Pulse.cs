@@ -55,6 +55,46 @@ internal sealed class Pulse(
         return new EmitResult(stored.EventId, stored.StreamPosition);
     }
 
+    public Task<EmitResult> EmitAll(StreamName stream, IReadOnlyList<object> events, CancellationToken cancellationToken = default)
+    {
+        return EmitAll(stream, events, DefaultEmitOptions, cancellationToken);
+    }
+
+    public async Task<EmitResult> EmitAll(
+        StreamName stream,
+        IReadOnlyList<object> events,
+        EmitOptions options,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var streamName = stream.Value();
+        if (string.IsNullOrWhiteSpace(streamName))
+        {
+            throw new ArgumentException("The stream name must not be empty.", nameof(stream));
+        }
+
+        if (events.Count == 0)
+        {
+            throw new ArgumentException("EmitAll needs at least one event. To save one event, use Emit.", nameof(events));
+        }
+
+        var now = time.GetUtcNow();
+        var newEvents = new List<NewEvent>(events.Count);
+        for (var index = 0; index < events.Count; index++)
+        {
+            var @event = events[index] ?? throw new ArgumentException($"The event at position {index} is null.", nameof(events));
+            newEvents.Add(new NewEvent(EventIds.NewVersion7(now), streamName, names.Events.NameOf(@event.GetType()), json.Serialize(@event), settings.Node, now));
+        }
+
+        var stored = await store.AppendAll(newEvents, options.ExpectedVersion, options.Transaction, cancellationToken).ConfigureAwait(false);
+        signal.Notify();
+        return new EmitResult(stored[^1].EventId, stored[^1].StreamPosition);
+    }
+
     public Task<Guid> Enqueue<TJob>(TJob job, CancellationToken cancellationToken = default)
         where TJob : notnull
     {

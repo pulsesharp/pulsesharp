@@ -168,6 +168,82 @@ public sealed partial class PostgreSqlStore : ISyncStore, INotifyingStore, IAsyn
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<StoredEvent>> AppendAll(
+        IReadOnlyList<NewEvent> events,
+        ExpectedVersion expectedVersion,
+        DbTransaction? transaction,
+        CancellationToken cancellationToken
+    )
+    {
+        await EnsureSchema(cancellationToken).ConfigureAwait(false);
+
+        var stream = events[0].Stream;
+        var outer = transaction is null ? null : OuterTransaction(transaction);
+        await using var batch = outer is null ? _dataSource.CreateBatch() : new NpgsqlBatch(outer.Connection, outer);
+        batch.BatchCommands.Add(BatchCommand("SELECT pg_advisory_xact_lock(hashtextextended($1, 0));", $"pulsesharp.append.{_schema}"));
+        batch.BatchCommands.Add(BatchCommand(
+            $"""
+            WITH current AS (SELECT COALESCE(MAX(stream_position), 0) AS position FROM {_events} WHERE stream = $1)
+            INSERT INTO {_events} (event_id, stream, stream_position, event_name, data, origin, emitted_at)
+            SELECT e.event_id, $1, current.position + e.ordinal, e.event_name, convert_from(e.data, 'UTF8')::jsonb, e.origin, e.emitted_at
+            FROM current, unnest($2::uuid[], $3::int[], $4::text[], $5::bytea[], $6::text[], $7::timestamptz[])
+                AS e(event_id, ordinal, event_name, data, origin, emitted_at)
+            WHERE $8 = 0
+               OR ($8 = 1 AND current.position = 0)
+               OR ($8 = 2 AND current.position > 0)
+               OR ($8 = 3 AND current.position = $9)
+            ORDER BY e.ordinal
+            RETURNING global_position, stream_position;
+            """,
+            stream,
+            events.Select(newEvent => newEvent.EventId).ToArray(),
+            Enumerable.Range(1, events.Count).ToArray(),
+            events.Select(newEvent => newEvent.EventName).ToArray(),
+            events.Select(newEvent => newEvent.Data).ToArray(),
+            events.Select(newEvent => newEvent.Origin).ToArray(),
+            events.Select(newEvent => newEvent.EmittedAt).ToArray(),
+            (int)expectedVersion.Kind,
+            expectedVersion.Position
+        ));
+        batch.BatchCommands.Add(NotifyCommand());
+
+        var positions = new List<(long Global, long InStream)>(events.Count);
+        await using (var reader = await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                positions.Add((reader.GetInt64(0), reader.GetInt64(1)));
+            }
+        }
+
+        if (positions.Count != events.Count)
+        {
+            var actual = await CurrentStreamPosition(stream, outer, cancellationToken).ConfigureAwait(false);
+            throw new ExpectedVersionMismatchException(stream, expectedVersion, actual);
+        }
+
+        var ordered = positions.OrderBy(position => position.InStream).ToList();
+        var saved = new List<StoredEvent>(events.Count);
+        for (var index = 0; index < events.Count; index++)
+        {
+            var newEvent = events[index];
+            saved.Add(new StoredEvent(
+                ordered[index].Global,
+                newEvent.EventId,
+                newEvent.Stream,
+                ordered[index].InStream,
+                newEvent.EventName,
+                newEvent.Data,
+                newEvent.Origin,
+                newEvent.EmittedAt
+            ));
+        }
+
+        return saved;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<StoredEvent>> ReadAfter(
         long globalPosition,
         IReadOnlySet<string> eventNames,
@@ -289,6 +365,29 @@ public sealed partial class PostgreSqlStore : ISyncStore, INotifyingStore, IAsyn
     }
 
     /// <inheritdoc />
+    public async Task<int> CountForSync(SyncQuery query, CancellationToken cancellationToken)
+    {
+        await using var command = await Command($"""
+            SELECT count(*) FROM (
+                SELECT 1 FROM {_events}
+                WHERE global_position > $1
+                  AND ($2::text IS NULL OR origin = $2::text)
+                  AND ($3::text IS NULL OR origin <> $3::text)
+                  AND (cardinality($4::text[]) = 0 OR EXISTS (SELECT 1 FROM unnest($4::text[]) AS prefix WHERE left(stream, length(prefix)) = prefix))
+                LIMIT $5
+            ) AS counted;
+            """,
+            cancellationToken,
+            query.AfterPosition,
+            (object?)query.Origin ?? DBNull.Value,
+            (object?)query.ExceptOrigin ?? DBNull.Value,
+            query.StreamPrefixes.ToArray(),
+            query.MaxCount
+        ).ConfigureAwait(false);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <inheritdoc />
     public async Task<long> LoadSyncPosition(string remote, SyncDirection direction, CancellationToken cancellationToken)
     {
         await using var command = await Command(
@@ -362,6 +461,44 @@ public sealed partial class PostgreSqlStore : ISyncStore, INotifyingStore, IAsyn
     }
 
     /// <inheritdoc />
+    public async Task<bool> SaveCursors(IReadOnlyList<HandlerCursor> cursors, long revision, CancellationToken cancellationToken)
+    {
+        if (cursors.Count == 0)
+        {
+            return true;
+        }
+
+        await EnsureSchema(cancellationToken).ConfigureAwait(false);
+
+        await using var batch = _dataSource.CreateBatch();
+        batch.BatchCommands.Add(BatchCommand($"SELECT 1 FROM {_handlers} WHERE handler_name = $1 AND revision = $2 FOR SHARE;", cursors[0].HandlerName, revision));
+        foreach (var cursor in cursors)
+        {
+            batch.BatchCommands.Add(BatchCommand(
+                $"""
+                INSERT INTO {_cursors} (handler_name, stream, position, state, attempts, last_error, retry_at)
+                SELECT $1, $2, $3, $4, $5, $6, $7
+                WHERE EXISTS (SELECT 1 FROM {_handlers} WHERE handler_name = $1 AND revision = $8)
+                ON CONFLICT (handler_name, stream) DO UPDATE SET
+                    position = excluded.position, state = excluded.state, attempts = excluded.attempts,
+                    last_error = excluded.last_error, retry_at = excluded.retry_at;
+                """,
+                cursor.HandlerName,
+                cursor.Stream,
+                cursor.Position,
+                (short)cursor.State,
+                cursor.Attempts,
+                Nullable(cursor.LastError),
+                Nullable(cursor.RetryAt),
+                revision
+            ));
+        }
+
+        await using var reader = await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     public async Task<HandlerLeaseStatus> LeaseHandler(
         string handlerName,
         string workerId,
@@ -386,9 +523,10 @@ public sealed partial class PostgreSqlStore : ISyncStore, INotifyingStore, IAsyn
             }
         }
 
-        await using var current = await Command($"SELECT revision FROM {_handlers} WHERE handler_name = $1;", cancellationToken, handlerName).ConfigureAwait(false);
-        var revision = (long)(await current.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
-        return new HandlerLeaseStatus(Held: false, Revision: revision);
+        await using var current = await Command($"SELECT revision, lease_owner FROM {_handlers} WHERE handler_name = $1;", cancellationToken, handlerName).ConfigureAwait(false);
+        await using var holder = await current.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        await holder.ReadAsync(cancellationToken).ConfigureAwait(false);
+        return new HandlerLeaseStatus(Held: false, Revision: holder.GetInt64(0), Owner: holder.IsDBNull(1) ? null : holder.GetString(1));
     }
 
     /// <inheritdoc />
@@ -607,6 +745,44 @@ public sealed partial class PostgreSqlStore : ISyncStore, INotifyingStore, IAsyn
             WHERE job_id = $1 AND state IN (0, 1, 2);
             """, cancellationToken, jobId, now).ConfigureAwait(false);
         return changed > 0;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteHandledEvents(
+        DateTimeOffset emittedBefore,
+        IReadOnlyList<EventListener> listeners,
+        string ownNode,
+        long? ownEventsSentUpTo,
+        int maxCount,
+        CancellationToken cancellationToken
+    )
+    {
+        await using var command = await Command($"""
+            WITH listener AS (SELECT * FROM unnest($1::text[], $2::text[]) AS l(handler, name)),
+            doomed AS (
+                SELECT e.global_position FROM {_events} e
+                WHERE e.emitted_at < $3
+                  AND e.stream_position < (SELECT MAX(x.stream_position) FROM {_events} x WHERE x.stream = e.stream)
+                  AND ($4::bigint IS NULL OR e.origin <> $5::text OR e.global_position <= $4::bigint)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM listener l
+                      WHERE l.name = e.event_name
+                        AND COALESCE((SELECT c.position FROM {_cursors} c WHERE c.handler_name = l.handler AND c.stream = e.stream), 0) < e.stream_position
+                  )
+                ORDER BY e.global_position
+                LIMIT $6
+            )
+            DELETE FROM {_events} WHERE global_position IN (SELECT global_position FROM doomed);
+            """,
+            cancellationToken,
+            listeners.Select(listener => listener.HandlerName).ToArray(),
+            listeners.Select(listener => listener.EventName).ToArray(),
+            emittedBefore,
+            (object?)ownEventsSentUpTo ?? DBNull.Value,
+            ownNode,
+            maxCount
+        ).ConfigureAwait(false);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

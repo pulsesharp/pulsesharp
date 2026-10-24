@@ -99,6 +99,53 @@ public sealed class SyncServerOptions
         return this;
     }
 
+    /// <summary>
+    /// Says which streams each device may write. A device that sends an event for any other stream has that event refused
+    /// (the server logs a warning and the device logs one too); its other events are saved as usual. This keeps a device
+    /// from writing into streams that belong to the server or to another device. The names are prefixes.
+    /// </summary>
+    /// <param name="allowedStreams">Gets a node's name and returns the stream name prefixes it may write.</param>
+    /// <returns>These options.</returns>
+    /// <example>
+    /// <code>
+    /// server.PushStreams(node => [$"Sale-{node}-"]);
+    /// </code>
+    /// </example>
+    public SyncServerOptions PushStreams(Func<string, IReadOnlyList<string>> allowedStreams)
+    {
+        ArgumentNullException.ThrowIfNull(allowedStreams);
+        AllowedPushStreams = allowedStreams;
+        return this;
+    }
+
+    /// <summary>
+    /// Lets every device write every stream. Only choose this when you trust all devices completely: a device could then
+    /// write into streams that belong to the server, for example a price list.
+    /// </summary>
+    /// <returns>These options.</returns>
+    public SyncServerOptions PushAnyStream()
+    {
+        AnyPushStream = true;
+        return this;
+    }
+
+    internal bool PushIsConfigured
+    {
+        get
+        {
+            return AnyPushStream || AllowedPushStreams is not null;
+        }
+    }
+
+    internal bool AnyPushStream { get; private set; }
+
+    internal Func<string, IReadOnlyList<string>>? AllowedPushStreams { get; private set; }
+
+    internal IReadOnlyList<string>? PushStreamsFor(string node)
+    {
+        return AnyPushStream ? null : AllowedPushStreams!(node);
+    }
+
     internal IReadOnlyList<string>? PullStreamsFor(string node)
     {
         if (_nodes.TryGetValue(node, out var allowed) && allowed.PullStreams.Count > 0)

@@ -16,9 +16,9 @@ public sealed class PulseSharpAdvanced
 
     /// <summary>
     /// How many streams one handler works on at the same time. Events of one stream are always handled
-    /// in order, one at a time. The default is 4.
+    /// in order, one at a time. The default is 8.
     /// </summary>
-    public int MaxParallelStreams { get; set; } = 4;
+    public int MaxParallelStreams { get; set; } = 8;
 
     /// <summary>
     /// How many jobs this app instance runs at the same time. The default is 4.
@@ -33,9 +33,30 @@ public sealed class PulseSharpAdvanced
 
     /// <summary>
     /// How long one app instance keeps a handler without renewing its claim. Only the holder delivers that handler's
-    /// events; when an instance stops unexpectedly, another takes over after this time. The default is 30 seconds.
+    /// events; when an instance stops unexpectedly, another takes over after this time. When the previous holder was a process on this machine that is gone, the
+    /// takeover is immediate. The default is 10 seconds.
     /// </summary>
-    public TimeSpan HandlerLease { get; set; } = TimeSpan.FromSeconds(30);
+    public TimeSpan HandlerLease { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// How long one handler may take for one event. When the time is up, the handler's cancellation token is cancelled; if the
+    /// handler has not stopped 10 seconds later, PulseSharp stops waiting, counts the attempt as failed and retries as usual,
+    /// so a handler that hangs can never block its stream for good. The default is 5 minutes; <see langword="null"/> sets no limit.
+    /// </summary>
+    public TimeSpan? HandlerTimeout { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How long one run of a job may take. It works like <see cref="HandlerTimeout"/>: the job is cancelled, then abandoned,
+    /// and the attempt counts as failed. The default is 1 hour; <see langword="null"/> sets no limit.
+    /// </summary>
+    public TimeSpan? JobTimeout { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// How long to keep events. After that, the app instance deletes events that every handler listening to them has handled
+    /// and, when the app syncs, that were sent to the server. Choose a time longer than the longest a device can stay offline.
+    /// The default is <see langword="null"/>: events are kept forever.
+    /// </summary>
+    public TimeSpan? KeepEvents { get; set; }
 
     /// <summary>
     /// How long to keep jobs that succeeded or were cancelled. After that, the app instance that runs jobs deletes them,

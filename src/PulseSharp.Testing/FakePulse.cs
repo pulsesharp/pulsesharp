@@ -98,6 +98,53 @@ public class FakePulse : IPulse, IRecordedPulse
     }
 
     /// <inheritdoc />
+    public Task<EmitResult> EmitAll(StreamName stream, IReadOnlyList<object> events, CancellationToken cancellationToken = default)
+    {
+        return EmitAll(stream, events, new EmitOptions(), cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public virtual Task<EmitResult> EmitAll(StreamName stream, IReadOnlyList<object> events, EmitOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(events);
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (events.Count == 0)
+        {
+            throw new ArgumentException("EmitAll needs at least one event. To save one event, use Emit.", nameof(events));
+        }
+
+        if (events.Any(@event => @event is null))
+        {
+            throw new ArgumentException("An event in the list is null.", nameof(events));
+        }
+
+        if (ThrowOnEmit is { } failure)
+        {
+            throw failure;
+        }
+
+        var streamName = stream.Value();
+        lock (_gate)
+        {
+            _streamPositions.TryGetValue(streamName, out var current);
+            if (!options.ExpectedVersion.Allows(current))
+            {
+                throw new ExpectedVersionMismatchException(streamName, options.ExpectedVersion, current);
+            }
+
+            foreach (var @event in events)
+            {
+                _events.Add(new EmittedEvent(@event, streamName, options));
+            }
+
+            _streamPositions[streamName] = current + events.Count;
+            return Task.FromResult(new EmitResult(Guid.NewGuid(), current + events.Count));
+        }
+    }
+
+    /// <inheritdoc />
     public Task<Guid> Enqueue<TJob>(TJob job, CancellationToken cancellationToken = default)
         where TJob : notnull
     {

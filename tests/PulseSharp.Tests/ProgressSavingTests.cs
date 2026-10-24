@@ -53,7 +53,16 @@ public sealed class ProgressSavingTests : IDisposable
         await using (var second = await StartHost(secondRun))
         {
             await second.Control.Retry("recorder", "Sale-A");
-            await Eventually.True(() => secondRun.Count == BacklogSize - 149, "after the retry, the rest is handled");
+            try
+            {
+                await Eventually.True(() => secondRun.Count == BacklogSize - 149, "after the retry, the rest is handled");
+            }
+            catch
+            {
+                var cursors = string.Join("; ", (await second.Control.GetCursors("recorder")).Select(cursor => $"{cursor.Stream} pos={cursor.Position} {cursor.State} attempts={cursor.Attempts}"));
+                Assert.Fail($"handled {secondRun.Count} of {BacklogSize - 149}: first={secondRun.FirstOrDefault()}, last={secondRun.LastOrDefault()}, distinct={secondRun.Distinct().Count()}. Cursors: {cursors}");
+            }
+
             await Eventually.StaysTrue(() => secondRun.Count == BacklogSize - 149, "nothing before event 150 is handled again");
         }
 

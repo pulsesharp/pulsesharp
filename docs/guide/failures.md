@@ -70,16 +70,29 @@ The handler handles every stored event again, in order per stream.
 `Retry`, `Skip` and `Rewind` return when the change is stored, and work from any app instance: the instance that holds the handler applies the change at once with PostgreSQL, and within about one poll interval with other stores. An unknown handler name throws `ArgumentException`; retrying a stream the handler has never seen, or skipping when nothing is waiting, throws `InvalidOperationException`.
 :::
 
-## When an app stops suddenly
+## When a handler hangs
 
-One app instance runs a handler at a time. It holds a short claim on the handler (a lease) and renews it while it runs. When the app stops normally, it hands its handlers over at once. When the app is killed or the machine loses power, the claim is still there, and the next start of the app (or another instance) takes the handler over only after `HandlerLease` has passed: 30 seconds by default. Nothing is lost. The events wait and then catch up in order.
-
-To shorten the wait, lower the lease. It must stay longer than `PollInterval`:
+A handler that never returns would hold up its stream for good, and PulseSharp would never notice. So every handler has a time limit, `Advanced.HandlerTimeout` (5 minutes by default). When the time is up, the handler's cancellation token is cancelled. If the handler has not stopped 10 poll intervals later (10 seconds by default), PulseSharp stops waiting for it. The attempt counts as failed, with a message that says so, and the usual retries follow. If the next attempt works, the stream goes on by itself.
 
 ```csharp
 builder.Services.AddPulseSharpSqlite("app.db", pulse =>
 {
-    pulse.Advanced.HandlerLease = TimeSpan.FromSeconds(10);
+    pulse.Advanced.HandlerTimeout = TimeSpan.FromMinutes(1);
+});
+```
+
+Jobs work the same way with `Advanced.JobTimeout` (1 hour by default). Set either to `null` for no limit. Pass the `CancellationToken` on to everything your handler awaits, so it can stop in time. A handler that ignores the token is abandoned, but its code may still be running in the background.
+
+## When an app stops suddenly
+
+One app instance runs a handler at a time. It holds a short claim on the handler (a lease) and renews it while it runs. When the app stops normally, it hands its handlers over at once. When the app is killed or the machine loses power, the claim is still there. If the app starts again on the same machine, PulseSharp sees that the old process is gone and takes the handlers over at once. In every other case (another machine, or a process that may still be alive) the new instance waits until `HandlerLease` has passed: 10 seconds by default. Nothing is lost. The events wait and then catch up in order.
+
+To change the wait, set the lease. It must stay longer than `PollInterval`:
+
+```csharp
+builder.Services.AddPulseSharpSqlite("app.db", pulse =>
+{
+    pulse.Advanced.HandlerLease = TimeSpan.FromSeconds(20);
 });
 ```
 

@@ -41,11 +41,14 @@ You rarely need these. They live under `pulse.Advanced` so the everyday settings
 | Setting | Default | Meaning |
 |---|---|---|
 | `PollInterval` | 1 second | How often handlers and workers check for work when nothing wakes them. Also the heartbeat of running jobs |
-| `MaxParallelStreams` | `4` | Streams one handler works on at the same time |
+| `MaxParallelStreams` | `8` | Streams one handler works on at the same time |
 | `MaxParallelJobs` | `4` | Jobs this app instance runs at the same time |
 | `JobLease` | 5 minutes | How long a running job stays claimed without a heartbeat. Must be longer than `PollInterval` |
 | `KeepFinishedJobs` | 7 days | How long to keep jobs that succeeded or were cancelled. Failed jobs are kept until retried. `null` keeps every job |
-| `HandlerLease` | 30 seconds | How long one app instance keeps a handler without renewing its claim. Another instance takes over after this time if the holder crashes. Must be longer than `PollInterval` |
+| `HandlerLease` | 10 seconds | How long one app instance keeps a handler without renewing its claim. Another instance takes over after this time if the holder crashes (at once, when the holder was a process on the same machine that is gone). Must be longer than `PollInterval` |
+| `HandlerTimeout` | 5 minutes | How long one handler may take for one event. Then it is cancelled, and abandoned if it does not stop within 10 poll intervals. The attempt counts as failed and is retried. `null` sets no limit |
+| `JobTimeout` | 1 hour | The same for one run of a job. `null` sets no limit |
+| `KeepEvents` | `null` | How long to keep events that were handled (and sent, when you sync). `null` keeps every event |
 | `JsonOptions` | web defaults | How events and jobs are stored as JSON. Set a source-generated resolver for Native AOT - see [Stores](/guide/stores#how-data-is-stored) |
 
 ## Stores

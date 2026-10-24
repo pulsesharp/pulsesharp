@@ -37,6 +37,23 @@ public interface IPulseStore
     );
 
     /// <summary>
+    /// Saves several events at the end of one stream in one commit: all of them, in the order given, or none.
+    /// <paramref name="expectedVersion"/> is checked atomically against the stream before the first event.
+    /// </summary>
+    /// <param name="events">The events to save. All belong to the same stream. There is at least one.</param>
+    /// <param name="expectedVersion">What the stream must look like for the save to succeed.</param>
+    /// <param name="transaction">The caller's transaction to save the events in, or <see langword="null"/>. Stores that can't use it ignore it.</param>
+    /// <param name="cancellationToken">Cancels the save.</param>
+    /// <returns>The saved events with their global and stream positions, in the order given.</returns>
+    /// <exception cref="ExpectedVersionMismatchException">The stream does not match <paramref name="expectedVersion"/>. Nothing is saved.</exception>
+    Task<IReadOnlyList<StoredEvent>> AppendAll(
+        IReadOnlyList<NewEvent> events,
+        ExpectedVersion expectedVersion,
+        DbTransaction? transaction,
+        CancellationToken cancellationToken
+    );
+
+    /// <summary>
     /// Reads events after a global position, in global order, limited to some event names.
     /// </summary>
     /// <param name="globalPosition">Only events after this position are returned. 0 reads from the start.</param>
@@ -84,6 +101,17 @@ public interface IPulseStore
     /// <param name="cancellationToken">Cancels the save.</param>
     /// <returns><see langword="true"/> when the cursor was saved; <see langword="false"/> when the revision has changed.</returns>
     Task<bool> SaveCursor(HandlerCursor cursor, long revision, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Saves several cursors of one handler in one commit, with the same revision check as <see cref="SaveCursor"/>.
+    /// All of them are saved, or none (when the revision has changed). This is how a handler that works on many
+    /// streams at once saves its progress with a single commit instead of one per stream.
+    /// </summary>
+    /// <param name="cursors">The cursors. All belong to the same handler.</param>
+    /// <param name="revision">The handler revision the writer is working with (see <see cref="LeaseHandler"/>).</param>
+    /// <param name="cancellationToken">Cancels the save.</param>
+    /// <returns><see langword="true"/> when the cursors were saved; <see langword="false"/> when the revision has changed.</returns>
+    Task<bool> SaveCursors(IReadOnlyList<HandlerCursor> cursors, long revision, CancellationToken cancellationToken);
 
     /// <summary>
     /// Takes or renews the lease of a handler, so that only one app instance delivers its events at a time.
@@ -246,6 +274,30 @@ public interface IPulseStore
     /// <param name="cancellationToken">Cancels the request.</param>
     /// <returns><see langword="true"/> when the job was pending, retrying or running.</returns>
     Task<bool> RequestCancel(Guid jobId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes old events that are no longer needed, so the event table does not grow forever. An event is deleted only when
+    /// all of this is true: it was emitted before <paramref name="emittedBefore"/>; it is not the newest event of its stream
+    /// (that one stays, so stream positions never go back); every handler in <paramref name="listeners"/> that listens to it
+    /// has handled it (its cursor for that stream is at or past the event); and, when <paramref name="ownEventsSentUpTo"/>
+    /// is given, an event this node emitted (<paramref name="ownNode"/>) has been sent to the server (its global position is
+    /// at or below that position). A store that keeps events only in memory may delete nothing and return 0.
+    /// </summary>
+    /// <param name="emittedBefore">Only events emitted before this time are deleted.</param>
+    /// <param name="listeners">Every handler and the event names it listens to.</param>
+    /// <param name="ownNode">The name of this node, the origin of the events it emitted itself.</param>
+    /// <param name="ownEventsSentUpTo">The global position up to which this node's own events were sent to the server, or <see langword="null"/> when the app does not sync.</param>
+    /// <param name="maxCount">The most events to delete in this call.</param>
+    /// <param name="cancellationToken">Cancels the deletion.</param>
+    /// <returns>How many events were deleted.</returns>
+    Task<int> DeleteHandledEvents(
+        DateTimeOffset emittedBefore,
+        IReadOnlyList<EventListener> listeners,
+        string ownNode,
+        long? ownEventsSentUpTo,
+        int maxCount,
+        CancellationToken cancellationToken
+    );
 
     /// <summary>
     /// Deletes jobs that succeeded or were cancelled before a time. Failed, pending, retrying and running jobs are kept.

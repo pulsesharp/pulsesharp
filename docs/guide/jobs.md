@@ -123,7 +123,7 @@ A handler that throws is retried with the same growing delay as events, up to `M
 
 ## Leases: jobs survive a stopped app
 
-When a worker starts a job it takes a **lease** (`Advanced.JobLease`, default 5 minutes) and renews it every poll interval. If the app instance stops unexpectedly, the lease runs out and another worker - or the same app after a restart - picks the job up again. On a normal shutdown the job is handed back at once, and that attempt is not counted.
+When a worker starts a job it takes a **lease** (`Advanced.JobLease`, default 5 minutes) and renews it every poll interval. If the app instance stops unexpectedly, the lease runs out and another worker - or the same app after a restart - picks the job up again. When the old worker was a process on the same machine that is gone, the job runs again at once when the app restarts (or within 30 seconds when another instance is already running), instead of after the whole lease. A job that was taken over this way counts as an attempt. On a normal shutdown the job is handed back at once, and that attempt is not counted.
 
 ## Finished jobs are cleaned up
 

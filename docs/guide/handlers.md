@@ -106,14 +106,14 @@ Every handler receives an `EventContext`:
 ## Ordering and parallelism
 
 - Within **one stream**, a handler receives events **one at a time, in order**.
-- A handler works on up to `Advanced.MaxParallelStreams` streams **at the same time** (default 4).
+- A handler works on up to `Advanced.MaxParallelStreams` streams **at the same time** (default 8).
 - Different handlers are completely independent. **Never rely on the order between handlers** of the same event.
 
 ```csharp
 pulse.Advanced.MaxParallelStreams = 8;
 ```
 
-With many small streams (one event each, for example a stream per sale), a higher value is faster on PostgreSQL, because each stream saves its own progress. Handling 5,000 such streams took 3.3 seconds at 4, and 1.3 seconds at 16. Each stream in progress may use a database connection, so keep `MaxParallelStreams` times the number of handlers below your connection pool size. SQLite writes one thing at a time and gains nothing from a higher value.
+A higher value helps handlers that wait on something, such as a web call or a slow query, because that many streams can wait at the same time. Each stream in progress may use a database connection, so keep `MaxParallelStreams` times the number of handlers below your connection pool size.
 
 ## Write handlers that are safe to repeat
 

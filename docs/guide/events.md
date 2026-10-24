@@ -90,6 +90,26 @@ await pulse.Emit(new SettingsStream(DateOnly.FromDateTime(DateTime.UtcNow)), new
 // stream name: Settings-2026-10-11
 ```
 
+## Several events at once
+
+To save several events together, use `EmitAll`. They go into one stream, in the order you give, in one commit: all of them are saved, or none. It is also much faster than emitting them one by one, because the database commits once.
+
+```csharp
+await pulse.EmitAll("Menu", new ProductAdded("tea", 2.50m), new ProductAdded("coffee", 3.20m), new PriceChanged("tea", 2.80m));
+```
+
+The events may be of different types. With a list instead of separate arguments, you can add options. The expected version and the transaction apply to the whole group, and the result is the last event:
+
+```csharp
+var events = new List<object> { new ProductAdded("tea", 2.50m), new ProductAdded("coffee", 3.20m) };
+var options = new EmitOptions { ExpectedVersion = ExpectedVersion.NoStream };
+
+var result = await pulse.EmitAll("Menu", events, options);
+// result.StreamPosition is 2: the position of the last event
+```
+
+A good use is putting the first data in place when an app starts: with `NoStream`, two app instances starting at the same time save it once, and a crash can never leave it half done.
+
 ## The emit result
 
 `Emit` returns the event's id and position:

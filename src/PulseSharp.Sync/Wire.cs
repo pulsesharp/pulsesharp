@@ -45,7 +45,7 @@ internal sealed record WireEvent(
 
 internal sealed record PushRequest(IReadOnlyList<WireEvent> Events);
 
-internal sealed record PushResponse(int Accepted, int Duplicates);
+internal sealed record PushResponse(int Accepted, int Duplicates, int Refused = 0);
 
 internal sealed record PullResponse(IReadOnlyList<WireEvent> Events, long Next, bool HasMore);
 

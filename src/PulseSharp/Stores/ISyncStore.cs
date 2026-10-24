@@ -28,6 +28,15 @@ public interface ISyncStore : IPulseStore
     Task<IReadOnlyList<StoredEvent>> ReadForSync(SyncQuery query, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Counts the events that match a query, in the same way <see cref="ReadForSync"/> selects them, but without reading
+    /// their data. <see cref="SyncQuery.MaxCount"/> caps the count. This is how a device knows how many events are waiting.
+    /// </summary>
+    /// <param name="query">Which events to count.</param>
+    /// <param name="cancellationToken">Cancels the count.</param>
+    /// <returns>The number of matching events, at most <see cref="SyncQuery.MaxCount"/>.</returns>
+    Task<int> CountForSync(SyncQuery query, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Loads how far sync has got with a remote node.
     /// </summary>
     /// <param name="remote">The name of the remote node.</param>

@@ -21,7 +21,7 @@ public static class PulseSharpSyncServerExtensions
     /// builder.Services.AddPulseSharpPostgreSql(connectionString, pulse =>
     /// {
     ///     pulse.Node = "cloud";
-    ///     pulse.UseSyncServer(server => server.AllowNode("till-1", tillKey));
+    ///     pulse.UseSyncServer(server => server.AllowNode("till-1", tillKey).PushStreams(node => [$"Sale-{node}-"]));
     /// });
     ///
     /// app.MapPulseSharpSync();
@@ -44,6 +44,14 @@ public static class PulseSharpSyncServerExtensions
         {
             throw new InvalidOperationException(
                 "The sync server needs to know who may sync: add server.AllowNode(\"till-1\", key), or server.NodeFrom(user => ...)."
+            );
+        }
+
+        if (!options.PushIsConfigured)
+        {
+            throw new InvalidOperationException(
+                "The sync server must say which streams devices may write, so a device can never write into the server's own streams. "
+                + "Add server.PushStreams(node => [\"Sale-\" + node + \"-\"]), or server.PushAnyStream() to allow every stream."
             );
         }
 

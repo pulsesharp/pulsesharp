@@ -240,6 +240,18 @@ public sealed class PulseTestHost : IPulse, IRecordedPulse, IAsyncDisposable
     }
 
     /// <inheritdoc />
+    public Task<EmitResult> EmitAll(StreamName stream, IReadOnlyList<object> events, CancellationToken cancellationToken = default)
+    {
+        return _pulse.EmitAll(stream, events, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<EmitResult> EmitAll(StreamName stream, IReadOnlyList<object> events, EmitOptions options, CancellationToken cancellationToken = default)
+    {
+        return _pulse.EmitAll(stream, events, options, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task<Guid> Enqueue<TJob>(TJob job, CancellationToken cancellationToken = default)
         where TJob : notnull
     {

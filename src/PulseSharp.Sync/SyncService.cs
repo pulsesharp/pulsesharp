@@ -4,31 +4,38 @@ using System.Text;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using PulseSharp.Delivery;
 using PulseSharp.Stores;
 
 namespace PulseSharp.Sync;
 
-internal sealed class SyncService : BackgroundService, IPulseSync
+internal sealed class SyncService : BackgroundService, IPulseSync, IRetentionGuard
 {
+    private const int MaxWaitingCount = 100_000;
+
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan WaitToGatherABurst = TimeSpan.FromMilliseconds(100);
 
     private readonly SyncOptions _options;
     private readonly Func<string> _node;
     private readonly ISyncStore _store;
     private readonly TimeProvider _time;
+    private readonly WakeUpSignal _signal;
     private readonly ILogger _logger;
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _statusGate = new();
     private volatile SyncStatus _status = new(false, null, null);
     private string? _remote;
     private int _failures;
 
-    public SyncService(SyncOptions options, Func<string> node, ISyncStore store, TimeProvider time, ILogger logger)
+    public SyncService(SyncOptions options, Func<string> node, ISyncStore store, TimeProvider time, WakeUpSignal signal, ILogger logger)
     {
         _options = options;
         _node = node;
         _store = store;
         _time = time;
+        _signal = signal;
         _logger = logger;
 
         var handler = options.HttpHandler ?? new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) };
@@ -46,6 +53,8 @@ internal sealed class SyncService : BackgroundService, IPulseSync
             return _status;
         }
     }
+
+    public event Action<SyncStatus>? StatusChanged;
 
     public async Task<SyncStatus> SyncNow(CancellationToken cancellationToken = default)
     {
@@ -75,8 +84,9 @@ internal sealed class SyncService : BackgroundService, IPulseSync
         {
             try
             {
+                var wakeUp = _signal.Next;
                 await SyncNow(stoppingToken).ConfigureAwait(false);
-                await Task.Delay(NextWait(), _time, stoppingToken).ConfigureAwait(false);
+                await WaitForNextSync(wakeUp, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -85,8 +95,48 @@ internal sealed class SyncService : BackgroundService, IPulseSync
         }
     }
 
+    private async Task WaitForNextSync(Task wakeUp, CancellationToken stoppingToken)
+    {
+        using var timeUp = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var timer = Task.Delay(NextWait(), _time, timeUp.Token);
+
+        while (true)
+        {
+            if (await Task.WhenAny(timer, wakeUp).ConfigureAwait(false) == timer)
+            {
+                stoppingToken.ThrowIfCancellationRequested();
+                return;
+            }
+
+            wakeUp = _signal.Next;
+            if (await SomethingIsWaitingToBeSent(stoppingToken).ConfigureAwait(false))
+            {
+                await timeUp.CancelAsync().ConfigureAwait(false);
+                return;
+            }
+        }
+    }
+
+    private async Task<bool> SomethingIsWaitingToBeSent(CancellationToken cancellationToken)
+    {
+        var waiting = await CountWaiting(cancellationToken).ConfigureAwait(false);
+        if (waiting is { } count)
+        {
+            Set(_status with { Waiting = count });
+        }
+
+        if (_failures > 0 || !_options.Push || waiting is not > 0)
+        {
+            return false;
+        }
+
+        await Task.Delay(WaitToGatherABurst, _time, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     private async Task RunOnce(CancellationToken cancellationToken)
     {
+        Exception? failure;
         try
         {
             var remote = _remote ??= await LoadRemote(cancellationToken).ConfigureAwait(false);
@@ -102,24 +152,95 @@ internal sealed class SyncService : BackgroundService, IPulseSync
                 pullFailure = await Attempt(() => PullAll(remote, cancellationToken), cancellationToken).ConfigureAwait(false);
             }
 
-            var failure = pushFailure ?? pullFailure;
-            if (failure is not null)
-            {
-                RecordFailure(failure);
-                return;
-            }
-
-            if (_failures > 0)
-            {
-                Log.SyncRecovered(_logger, _options.Server!);
-            }
-
-            _failures = 0;
-            _status = new SyncStatus(true, _time.GetUtcNow(), null);
+            failure = pushFailure ?? pullFailure;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            RecordFailure(exception);
+            failure = exception;
+        }
+
+        if (failure is not null)
+        {
+            _failures++;
+            if (_failures == 1)
+            {
+                Log.SyncFailed(_logger, _options.Server!, failure.Message);
+            }
+
+            await Publish(_status with { Online = false, LastError = failure.Message }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (_failures > 0)
+        {
+            Log.SyncRecovered(_logger, _options.Server!);
+        }
+
+        _failures = 0;
+        await Publish(new SyncStatus(true, _time.GetUtcNow(), null), cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task Publish(SyncStatus status, CancellationToken cancellationToken)
+    {
+        var waiting = await CountWaiting(cancellationToken).ConfigureAwait(false);
+        Set(status with { Waiting = waiting ?? status.Waiting });
+    }
+
+    private void Set(SyncStatus status)
+    {
+        lock (_statusGate)
+        {
+            if (status == _status)
+            {
+                return;
+            }
+
+            _status = status;
+        }
+
+        try
+        {
+            StatusChanged?.Invoke(status);
+        }
+        catch (Exception exception)
+        {
+            Log.StatusSubscriberFailed(_logger, exception);
+        }
+    }
+
+    private async Task<int?> CountWaiting(CancellationToken cancellationToken)
+    {
+        if (!_options.Push)
+        {
+            return 0;
+        }
+
+        try
+        {
+            var after = await _store.LoadSyncPosition(_remote ?? AddressKey, SyncDirection.Push, cancellationToken).ConfigureAwait(false);
+            return await _store.CountForSync(new SyncQuery(after, _node(), null, [], MaxWaitingCount), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    public async Task<long?> OwnEventsSentUpTo(CancellationToken cancellationToken)
+    {
+        if (!_options.Push)
+        {
+            return null;
+        }
+
+        return await _store.LoadSyncPosition(_remote ?? AddressKey, SyncDirection.Push, cancellationToken).ConfigureAwait(false);
+    }
+
+    private string AddressKey
+    {
+        get
+        {
+            return $"address:{_options.Server}";
         }
     }
 
@@ -134,17 +255,6 @@ internal sealed class SyncService : BackgroundService, IPulseSync
         {
             return exception;
         }
-    }
-
-    private void RecordFailure(Exception exception)
-    {
-        _failures++;
-        if (_failures == 1)
-        {
-            Log.SyncFailed(_logger, _options.Server!, exception.Message);
-        }
-
-        _status = _status with { Online = false, LastError = exception.Message };
     }
 
     private async Task<string> LoadRemote(CancellationToken cancellationToken)
@@ -187,8 +297,14 @@ internal sealed class SyncService : BackgroundService, IPulseSync
             {
                 Content = JsonContent.Create(new PushRequest(events.Select(WireEvent.From).ToList()), WireJson.Default.PushRequest)
             };
-            await Send(request, WireJson.Default.PushResponse, cancellationToken).ConfigureAwait(false);
+            var response = await Send(request, WireJson.Default.PushResponse, cancellationToken).ConfigureAwait(false);
+            if (response.Refused > 0)
+            {
+                Log.SyncRefused(_logger, _options.Server!, response.Refused);
+            }
+
             await _store.SaveSyncPosition(remote, SyncDirection.Push, events[^1].GlobalPosition, cancellationToken).ConfigureAwait(false);
+            await _store.SaveSyncPosition(AddressKey, SyncDirection.Push, events[^1].GlobalPosition, cancellationToken).ConfigureAwait(false);
 
             if (events.Count < _options.BatchSize)
             {
@@ -209,6 +325,7 @@ internal sealed class SyncService : BackgroundService, IPulseSync
             {
                 var events = page.Events.Select(wire => wire.ToNewEvent()).ToList();
                 await _store.AppendReplicated(events, cancellationToken).ConfigureAwait(false);
+                _signal.Notify();
             }
 
             if (page.Next <= after)
