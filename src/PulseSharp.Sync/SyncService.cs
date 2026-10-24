@@ -90,14 +90,23 @@ internal sealed class SyncService : BackgroundService, IPulseSync
         try
         {
             var remote = _remote ??= await LoadRemote(cancellationToken).ConfigureAwait(false);
+            Exception? pushFailure = null;
             if (_options.Push)
             {
-                await PushAll(remote, cancellationToken).ConfigureAwait(false);
+                pushFailure = await Attempt(() => PushAll(remote, cancellationToken), cancellationToken).ConfigureAwait(false);
             }
 
+            Exception? pullFailure = null;
             if (_options.Pull)
             {
-                await PullAll(remote, cancellationToken).ConfigureAwait(false);
+                pullFailure = await Attempt(() => PullAll(remote, cancellationToken), cancellationToken).ConfigureAwait(false);
+            }
+
+            var failure = pushFailure ?? pullFailure;
+            if (failure is not null)
+            {
+                RecordFailure(failure);
+                return;
             }
 
             if (_failures > 0)
@@ -110,14 +119,32 @@ internal sealed class SyncService : BackgroundService, IPulseSync
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            _failures++;
-            if (_failures == 1)
-            {
-                Log.SyncFailed(_logger, _options.Server!, exception.Message);
-            }
-
-            _status = _status with { Online = false, LastError = exception.Message };
+            RecordFailure(exception);
         }
+    }
+
+    private static async Task<Exception?> Attempt(Func<Task> step, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await step().ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return exception;
+        }
+    }
+
+    private void RecordFailure(Exception exception)
+    {
+        _failures++;
+        if (_failures == 1)
+        {
+            Log.SyncFailed(_logger, _options.Server!, exception.Message);
+        }
+
+        _status = _status with { Online = false, LastError = exception.Message };
     }
 
     private async Task<string> LoadRemote(CancellationToken cancellationToken)

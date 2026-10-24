@@ -35,6 +35,11 @@ Getting ready for 1.0: a consistent API, finished jobs cleaned up, instant wake-
   - The failures guide explains that after a hard kill the next start waits for `HandlerLease` (30 seconds) before its handlers run, and how to shorten it.
   - The sync guide says what the server checks (who a device is, and that its events carry its own name) and what it does not yet (which streams a device may write to), and shows checking `EventContext.Origin`.
 
+### Fixed
+
+- Sync: when the server refused a push, the device also stopped receiving, because the pull ran only after a successful push. Push and pull now run independently, so a problem in one direction no longer stops the other. The status still reports the error.
+- Sync is now tested against lost connections: a lost answer to a push (also in the middle of a large backlog), a lost answer to a pull, and an error returned after the server saved the events. Nothing is lost and nothing is handled twice.
+
 ## [0.5.0-alpha] - 2026-10-15
 
 ### Added

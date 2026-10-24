@@ -16,7 +16,7 @@ namespace PulseSharp.Tests;
 
 public sealed record ProductChanged(string Sku);
 
-public sealed class SyncTests
+public sealed partial class SyncTests
 {
     private static readonly CancellationToken None = CancellationToken.None;
 
