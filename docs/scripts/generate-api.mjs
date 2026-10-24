@@ -196,7 +196,7 @@ const render = createRenderer(typePages)
 
 for (const pkg of parsed) {
   const types = pkg.members
-    .filter((member) => member.kind === 'T')
+    .filter((member) => member.kind === 'T' && pkg.declarations.has(member.name.replace(/`\d+$/, '')))
     .sort((left, right) => left.name.localeCompare(right.name))
 
   let page = `---\noutline: 2\n---\n\n# ${pkg.id}\n\n${pkg.intro}\n\n`

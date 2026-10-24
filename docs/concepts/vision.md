@@ -62,6 +62,7 @@ That makes them easy to synchronise. Two sides only need to **exchange the event
 | 0.3 | SQLite store and a desktop sample |
 | 0.4 | PostgreSQL store, transactional outbox, several app instances |
 | 0.5 | Device ↔ cloud sync |
-| 0.6 | API review and hardening before the stable release |
+| 0.6 | API review before the stable release |
+| 0.7 | Hardening and simplifying: faster delivery, healing after crashes and outages, proven by tests that kill a real app |
 | 1.0 | Stable API: events, jobs, SQLite, PostgreSQL and sync |
 | 1.x | Monitor (a web UI for streams, cursors, jobs and sync), SQL Server, recurring jobs |
