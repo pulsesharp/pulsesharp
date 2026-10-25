@@ -32,7 +32,7 @@ public sealed class SyncServerOptions
     public int MaxBatchSize { get; set; } = 1000;
 
     /// <summary>
-    /// Lets a node sync with a key, for example a till that calls <c>pulse.SyncWithCloud(url, key)</c>.
+    /// Lets a node sync with a key, for example a till that sets <c>sync.ApiKey</c> in <c>pulse.UseSync(...)</c>.
     /// </summary>
     /// <param name="node">The node's name: the <c>pulse.Node</c> of that app.</param>
     /// <param name="apiKey">The node's secret key. Keep it out of source code, for example in configuration.</param>

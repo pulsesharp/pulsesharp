@@ -62,12 +62,6 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
-    public void RefusesAHandlerClassWithoutEventHandlers()
-    {
-        Assert.Throws<InvalidOperationException>(() => Configure(pulse => pulse.AddHandler<NotAHandler>()));
-    }
-
-    [Fact]
     public void RefusesTwoHandlersForOneJobType()
     {
         var exception = Assert.Throws<InvalidOperationException>(() => Configure(pulse =>
@@ -94,7 +88,7 @@ public sealed class ConfigurationTests
             () => new ServiceCollection().AddPulseSharp(_ => { })
         );
 
-        Assert.Contains("UseInMemory", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("pulse.UseSqlite", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -157,6 +151,4 @@ public sealed class ConfigurationTests
             return Task.CompletedTask;
         }
     }
-
-    private sealed class NotAHandler;
 }

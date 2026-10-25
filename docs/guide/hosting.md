@@ -9,8 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.UseInMemory();
-    pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
+    pulse.UsePostgreSql(builder.Configuration.GetConnectionString("Events")!);
+    pulse.AddHandler<SaleCompleted, PrintReceipt>();
 });
 
 var app = builder.Build();
@@ -34,8 +34,8 @@ dotnet new worker -n Workers
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.UseInMemory();
-    pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
+    pulse.UsePostgreSql(builder.Configuration.GetConnectionString("Events")!);
+    pulse.AddJobHandler<ExportReport, ExportReportHandler>();
 });
 
 builder.Build().Run();
@@ -55,9 +55,9 @@ public partial class App
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddPulseSharp(pulse =>
         {
-            pulse.UseInMemory();
+            pulse.UseSqlite("till.db");
             pulse.Node = "till-1";
-            pulse.AddHandlersFromAssembly(typeof(App).Assembly);
+            pulse.AddHandler<SaleCompleted, PrintReceipt>();
         });
         builder.Services.AddSingleton<MainWindow>();
 
@@ -77,7 +77,7 @@ public partial class App
 Handlers run on background threads. To update the UI from a handler, marshal to the UI thread (`Dispatcher.InvokeAsync` in WPF, `Dispatcher.UIThread.Post` in Avalonia).
 
 ::: tip Offline-first desktop apps
-With `pulse.UseSqlite("Data Source=pos.db")`, a desktop app keeps its events and jobs on disk and continues after a restart - see [Stores](/guide/stores). Device ↔ cloud sync (0.5) will then send them to the server when the device is online. If the app is killed instead of closed, its handlers start again at once when the app restarts on the same machine: see [When an app stops suddenly](/guide/failures#when-an-app-stops-suddenly).
+With `pulse.UseSqlite("till.db")`, a desktop app keeps its events and jobs on disk and continues after a restart - see [Stores](/guide/stores). [Device to cloud sync](/guide/sync) sends them to the server when the device is online. If the app is killed instead of closed, its handlers start again within 10 seconds when it restarts: see [When an app stops suddenly](/guide/failures#when-an-app-stops-suddenly).
 :::
 
 ## Console app

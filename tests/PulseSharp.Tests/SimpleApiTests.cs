@@ -11,48 +11,6 @@ namespace PulseSharp.Tests;
 public sealed class SimpleApiTests
 {
     [Fact]
-    public async Task WhenRunsForEveryEventEmittedWithoutAStream()
-    {
-        var seen = new ConcurrentQueue<int>();
-        await using var host = await TestHost.Start(pulse => pulse.When<SaleCompleted>(sale => seen.Enqueue(sale.Number)));
-
-        var first = await host.Pulse.Emit(new SaleCompleted(1));
-        var second = await host.Pulse.Emit(new SaleCompleted(2));
-
-        await Eventually.True(() => seen.Count == 2, "both events are handled");
-        Assert.Equal([1, 2], seen);
-        Assert.Equal([1L, 2L], [first.StreamPosition, second.StreamPosition]);
-    }
-
-    [Fact]
-    public async Task WhenAcceptsAsyncCode()
-    {
-        var handled = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var host = await TestHost.Start(pulse => pulse.When<SaleCompleted>(async sale =>
-        {
-            await Task.Yield();
-            handled.TrySetResult(sale.Number);
-        }));
-
-        await host.Pulse.Emit(new SaleCompleted(7));
-
-        Assert.Equal(7, await handled.Task.WaitAsync(TimeSpan.FromSeconds(10)));
-    }
-
-    [Fact]
-    public void RefusesASecondWhenForTheSameEvent()
-    {
-        var exception = Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddPulseSharp(pulse =>
-        {
-            pulse.UseInMemory();
-            pulse.When<SaleCompleted>(_ => { });
-            pulse.When<SaleCompleted>(_ => { });
-        }));
-
-        Assert.Contains("give it a name", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task UsesTheEventNameOrAPlainStringAsTheStream()
     {
         var streams = new ConcurrentQueue<string>();
@@ -73,21 +31,6 @@ public sealed class SimpleApiTests
     }
 
     [Fact]
-    public async Task RunsAJobWithTheShortForm()
-    {
-        var ran = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var host = await TestHost.Start(pulse => pulse.OnJob<ImportProducts>(async job =>
-        {
-            await Task.Yield();
-            ran.TrySetResult(job.File);
-        }));
-
-        await host.Pulse.Enqueue(new ImportProducts("prices.csv"));
-
-        Assert.Equal("prices.csv", await ran.Task.WaitAsync(TimeSpan.FromSeconds(10)));
-    }
-
-    [Fact]
     public async Task EnqueuesJobsForLater()
     {
         await using var host = await TestHost.Start(pulse => pulse.OnJob<ImportProducts>((_, _, _) => Task.CompletedTask));
@@ -101,23 +44,6 @@ public sealed class SimpleApiTests
         Assert.InRange(first.RunAt, before.AddHours(1), DateTimeOffset.UtcNow.AddHours(1));
         Assert.Equal(JobState.Pending, first.State);
         Assert.Equal(at, (await host.Control.GetJob(tomorrow))!.RunAt);
-    }
-
-    [Fact]
-    public async Task SetsUpTheInMemoryStoreInOneLine()
-    {
-        var handled = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var builder = Host.CreateApplicationBuilder();
-        builder.Logging.ClearProviders();
-        builder.Services.AddPulseSharpInMemory(pulse => pulse.When<SaleCompleted>(sale => handled.TrySetResult(sale.Number)));
-
-        using var host = builder.Build();
-        await host.StartAsync();
-        await host.Services.GetRequiredService<IPulse>().Emit(new SaleCompleted(5));
-
-        Assert.Equal(5, await handled.Task.WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Contains(new ServiceCollection().AddPulseSharpInMemory(), descriptor => descriptor.ServiceType == typeof(IPulse));
-        await host.StopAsync();
     }
 
     [Fact]
@@ -139,15 +65,20 @@ public sealed class SimpleApiTests
     }
 
     [Fact]
-    public async Task SetsUpSqliteInOneLine()
+    public async Task RunsOnSqliteInAnAppHost()
     {
         using var database = new TempDatabase();
         var handled = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var builder = Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
-        builder.Services.AddPulseSharpSqlite(database.FilePath, pulse =>
+        builder.Services.AddPulseSharp(pulse =>
         {
-            pulse.When<SaleCompleted>(sale => handled.TrySetResult(sale.Number));
+            pulse.UseSqlite(database.FilePath);
+            pulse.On<SaleCompleted>("receipts", (sale, _, _) =>
+            {
+                handled.TrySetResult(sale.Number);
+                return Task.CompletedTask;
+            });
         });
 
         using (var host = builder.Build())

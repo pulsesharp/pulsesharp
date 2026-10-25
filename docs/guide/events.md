@@ -164,7 +164,7 @@ await tx.CommitAsync(ct);
 ```
 
 ::: info
-The SQLite store honours the transaction (see [Stores](/guide/stores#saving-your-data-and-the-event-together)); the in-memory store ignores it.
+The SQLite store honours the transaction (see [Stores](/guide/stores#saving-your-data-and-the-event-together)); the in-memory test store ignores it.
 :::
 
 ## Nodes

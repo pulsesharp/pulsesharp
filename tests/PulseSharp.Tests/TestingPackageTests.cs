@@ -131,12 +131,12 @@ public sealed class TestingPackageTests
         var imported = 0;
         await using var pulse = await PulseTestHost.Start(pulse =>
         {
-            pulse.When<SaleCompleted>(async _ =>
+            pulse.On<SaleCompleted>("slow", async (_, _, _) =>
             {
                 await Task.Delay(300);
                 Interlocked.Increment(ref handled);
             });
-            pulse.OnJob<ImportProducts>(async _ =>
+            pulse.OnJob<ImportProducts>(async (_, _, _) =>
             {
                 await Task.Delay(300);
                 Interlocked.Increment(ref imported);
@@ -156,7 +156,7 @@ public sealed class TestingPackageTests
         await using var pulse = await PulseTestHost.Start(pulse =>
         {
             pulse.On<SaleCompleted>("printer", (_, _, _) => throw new InvalidOperationException("The printer is out of paper."));
-            pulse.OnJob<ImportProducts>(_ => throw new InvalidOperationException("The file is missing."));
+            pulse.OnJob<ImportProducts>((_, _, _) => throw new InvalidOperationException("The file is missing."));
         });
 
         await pulse.Emit("Sale-1", new SaleCompleted(1));

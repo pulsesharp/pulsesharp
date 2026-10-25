@@ -122,4 +122,4 @@ public async Task ASaleOfTheLastBagWarnsAboutStock()
 - **`WaitUntilIdle()`** waits until every handler has caught up and no job is running or due. No `Task.Delay`, no flaky timing. If the engine is still busy after 10 seconds, it fails and says with what.
 - **`NothingFailed()`** fails the test when a handler stopped on a failing event or a job failed, and shows the error. Without it, a failing handler could go unnoticed.
 
-Retries are fast in the test host (10 ms, doubling), so a failing handler stops within a moment. `pulse.Services` gives you the app's services, for example to look at a fake afterwards. To test against a real database, choose the store in the setup, for example `pulse.UseSqlite("test.db")`.
+Retries are fast in the test host (10 ms, doubling), so a failing handler stops within a moment. `pulse.Services` gives you the app's services, for example to look at a fake afterwards. It uses the in-memory store (`pulse.UseInMemory()`, from this package) unless you choose another: to test against a real database, choose it in the setup, for example `pulse.UseSqlite("test.db")`.

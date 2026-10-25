@@ -19,13 +19,7 @@ public sealed record ExportReport(DateOnly Day);
 
 ## Add the handler
 
-The short way:
-
-```csharp
-pulse.OnJob<ExportReport>(async job => await Export(job.Day));
-```
-
-With progress and cancel (see below), take the context and the token too:
+Inline, with the job context (for [progress](#progress)) and a cancellation token:
 
 ```csharp
 pulse.OnJob<ExportReport>(async (job, context, ct) =>
@@ -45,8 +39,7 @@ public sealed class ExportReportHandler(IReportWriter writer) : IJobHandler<Expo
     }
 }
 
-pulse.AddJobHandler<ExportReport, ExportReportHandler>();   // explicit, AOT safe
-pulse.AddHandlersFromAssembly(typeof(Program).Assembly);    // or let scanning find it
+pulse.AddJobHandler<ExportReport, ExportReportHandler>();
 ```
 
 A job type has **exactly one** handler. Registering a second one stops the app at startup.

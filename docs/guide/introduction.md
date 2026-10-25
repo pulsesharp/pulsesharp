@@ -41,7 +41,7 @@ public sealed class StartDailyExport(IPulse pulse) : IEventHandler<DayClosed>
 | Package | What it adds | Status |
 |---|---|---|
 | `PulseSharp.Abstractions` | Contracts for handlers and libraries. No dependencies. | Preview |
-| `PulseSharp` | The engine, with an in-memory store built in | Preview |
+| `PulseSharp` | The engine | Preview |
 | `PulseSharp.Sqlite` | SQLite store, for desktop and mobile apps | Preview |
 | `PulseSharp.PostgreSql` | PostgreSQL store, for servers and several app instances | Preview |
 | `PulseSharp.Sync` | Device to cloud sync: the device side. See [Sync](/guide/sync) | Preview |

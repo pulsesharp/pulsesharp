@@ -12,12 +12,21 @@ dotnet add package PulseSharp.Sync --prerelease
 ```csharp
 using PulseSharp;
 
-builder.Services.AddPulseSharpSqlite("till.db", pulse =>
+builder.Services.AddPulseSharp(pulse =>
 {
+    pulse.UseSqlite("till.db");
     pulse.Node = "till-1";
-    pulse.SyncWithCloud("https://cloud.example.com/pulse/sync", builder.Configuration["SyncKey"]!);
+    pulse.UseSync(sync =>
+    {
+        sync.Server = new Uri("https://cloud.example.com/pulse/sync");
+        sync.ApiKey = builder.Configuration["SyncKey"]!;
+    });
 
-    pulse.When<PriceChanged>(price => Console.WriteLine($"New price for {price.Sku}: {price.Price}"));
+    pulse.On<PriceChanged>("prices", (price, context, ct) =>
+    {
+        Console.WriteLine($"New price for {price.Sku}: {price.Price}");
+        return Task.CompletedTask;
+    });
 });
 ```
 
@@ -35,14 +44,19 @@ using PulseSharp;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddPulseSharpPostgreSql(builder.Configuration.GetConnectionString("Events")!, pulse =>
+builder.Services.AddPulseSharp(pulse =>
 {
+    pulse.UsePostgreSql(builder.Configuration.GetConnectionString("Events")!);
     pulse.Node = "cloud";
     pulse.UseSyncServer(server => server
         .AllowNode("till-1", builder.Configuration["Tills:till-1"]!)
         .PushStreams(node => [$"Sale-{node}-"]));
 
-    pulse.When<SaleCompleted>(sale => Console.WriteLine($"Till sale: {sale.Total}"));
+    pulse.On<SaleCompleted>("till-sales", (sale, context, ct) =>
+    {
+        Console.WriteLine($"Till sale: {sale.Total}");
+        return Task.CompletedTask;
+    });
 });
 
 var app = builder.Build();
@@ -179,7 +193,6 @@ A device that asks for a stream it may not receive is refused, and its status sh
 | `Authorize` | none | Changes each request before it is sent, for example to add a bearer token |
 | `HttpHandler` | none | The HTTP handler to use, for example with a proxy or client certificate |
 
-`pulse.SyncWithCloud(server, apiKey)` is `UseSync` with `Server` and `ApiKey` set and the defaults for the rest.
 
 ## Signing devices in another way
 

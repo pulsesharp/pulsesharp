@@ -5,12 +5,12 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const packages = [
   { id: 'PulseSharp.Abstractions', page: 'abstractions', intro: 'Contracts for handlers and libraries. No dependencies.' },
-  { id: 'PulseSharp', page: 'core', intro: 'The engine: setup, the in-memory store, the control API and the store contract.' },
+  { id: 'PulseSharp', page: 'core', intro: 'The engine: setup, the control API and the store contract.' },
   { id: 'PulseSharp.Sqlite', page: 'sqlite', intro: 'The SQLite store.' },
   { id: 'PulseSharp.PostgreSql', page: 'postgresql', intro: 'The PostgreSQL store.' },
   { id: 'PulseSharp.Sync', page: 'sync', intro: 'Device to cloud sync: the client that runs on the device.' },
   { id: 'PulseSharp.Sync.Server', page: 'sync-server', intro: 'Device to cloud sync: the ASP.NET Core endpoint on the server.' },
-  { id: 'PulseSharp.Testing', page: 'testing', intro: 'Test helpers for apps that use PulseSharp. Reference it from test projects only.' }
+  { id: 'PulseSharp.Testing', page: 'testing', intro: 'Test helpers for apps that use PulseSharp, including the in-memory store. Reference it from test projects only.' }
 ]
 
 const builtInNames = {

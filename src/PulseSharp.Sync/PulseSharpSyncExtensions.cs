@@ -16,34 +16,6 @@ public static class PulseSharpSyncExtensions
     /// reached. The app keeps working offline; nothing is lost or sent twice.
     /// </summary>
     /// <param name="pulse">The PulseSharp builder.</param>
-    /// <param name="server">The server's sync endpoint, for example <c>https://cloud.example.com/pulse/sync</c>.</param>
-    /// <param name="apiKey">The key the server gave this node.</param>
-    /// <returns>The builder.</returns>
-    /// <example>
-    /// <code>
-    /// builder.Services.AddPulseSharpSqlite("till.db", pulse =>
-    /// {
-    ///     pulse.Node = "till-1";
-    ///     pulse.SyncWithCloud("https://cloud.example.com/pulse/sync", apiKey);
-    /// });
-    /// </code>
-    /// </example>
-    public static PulseSharpBuilder SyncWithCloud(this PulseSharpBuilder pulse, string server, string apiKey)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(server);
-        ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
-
-        return pulse.UseSync(sync =>
-        {
-            sync.Server = new Uri(server, UriKind.Absolute);
-            sync.ApiKey = apiKey;
-        });
-    }
-
-    /// <summary>
-    /// Syncs this app's events with a server, with full control over what is sent and received.
-    /// </summary>
-    /// <param name="pulse">The PulseSharp builder.</param>
     /// <param name="configure">Sets the server address and the other options.</param>
     /// <returns>The builder.</returns>
     /// <exception cref="InvalidOperationException">Sync is added twice, or an option is not valid.</exception>
@@ -68,7 +40,7 @@ public static class PulseSharpSyncExtensions
 
         if (pulse.Services.Any(descriptor => descriptor.ServiceType == typeof(IPulseSync)))
         {
-            throw new InvalidOperationException("Sync was added twice. Call UseSync or SyncWithCloud once.");
+            throw new InvalidOperationException("Sync was added twice. Call UseSync once.");
         }
 
         var options = new SyncOptions();

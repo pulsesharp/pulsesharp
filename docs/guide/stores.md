@@ -17,8 +17,8 @@ dotnet add package PulseSharp.Sqlite --prerelease
 ```csharp
 builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.UseSqlite("Data Source=pos.db");
-    pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
+    pulse.UseSqlite("pos.db");
+    pulse.AddHandler<SaleCompleted, PrintReceipt>();
 });
 ```
 
@@ -61,7 +61,7 @@ dotnet add package PulseSharp.PostgreSql --prerelease
 builder.Services.AddPulseSharp(pulse =>
 {
     pulse.UsePostgreSql(builder.Configuration.GetConnectionString("Events")!);
-    pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
+    pulse.AddHandler<SaleCompleted, PrintReceipt>();
 });
 ```
 
@@ -123,7 +123,7 @@ pulse.Advanced.JsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.We
 };
 ```
 
-An event or job that can't be serialized fails at `Emit` / `Enqueue` - even with the in-memory store - so you find out in your tests, not in production.
+An event or job that can't be serialized fails at `Emit` / `Enqueue` - even with the in-memory test store - so you find out in your tests, not in production.
 
 ## Writing your own store
 

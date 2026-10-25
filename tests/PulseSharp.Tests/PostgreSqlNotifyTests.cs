@@ -62,8 +62,12 @@ public sealed class PostgreSqlNotifyTests : IDisposable
         {
             pulse.UsePostgreSql(_schema.ConnectionString, _schema.Name);
             pulse.Advanced.PollInterval = TimeSpan.FromSeconds(30);
-            pulse.When<SaleCompleted>(sale => handled.TrySetResult(sale.Number));
-            pulse.OnJob<ImportProducts>(job =>
+            pulse.On<SaleCompleted>("sales", (sale, _, _) =>
+            {
+                handled.TrySetResult(sale.Number);
+                return Task.CompletedTask;
+            });
+            pulse.OnJob<ImportProducts>((job, _, _) =>
             {
                 imported.TrySetResult(job.File);
                 return Task.CompletedTask;

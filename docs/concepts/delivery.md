@@ -32,9 +32,9 @@ To keep a backlog fast, PulseSharp saves a handler's progress in groups, one com
 
 **What you do:** make job handlers safe to run again from the beginning.
 
-## In-memory store
+## In-memory store (tests only)
 
-The in-memory store keeps everything in the process. When the app stops, events, cursors and jobs are gone. Use it for tests, samples and learning. With the [SQLite and PostgreSQL stores](/guide/stores) everything survives a restart.
+The in-memory store from `PulseSharp.Testing` keeps everything in the process. When the app stops, events, cursors and jobs are gone, so it is only for tests. With the [SQLite and PostgreSQL stores](/guide/stores) everything survives a restart.
 
 ## Several app instances
 

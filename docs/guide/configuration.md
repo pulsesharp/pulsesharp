@@ -1,15 +1,6 @@
 # Configuration
 
-Most apps need one line. The defaults suit desktop apps, web apps and workers alike:
-
-```csharp
-builder.Services.AddPulseSharpSqlite("app.db", pulse =>
-{
-    pulse.When<SaleCompleted>(sale => Console.WriteLine($"Sold for {sale.Total}"));
-});
-```
-
-When you need more, everything is still in one place:
+Everything is set up in one place: the store, the handlers and the settings. The defaults suit desktop apps, web apps and workers alike, so most apps only choose a store and add their handlers:
 
 ```csharp
 builder.Services.AddPulseSharp(pulse =>
@@ -20,9 +11,8 @@ builder.Services.AddPulseSharp(pulse =>
     pulse.MaxAttempts = 5;
     pulse.RetryDelay = TimeSpan.FromSeconds(1);
 
-    pulse.Advanced.MaxParallelStreams = 8;
-
-    pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
+    pulse.AddHandler<SaleCompleted, PrintReceipt>();
+    pulse.AddJobHandler<ExportReport, ExportReportHandler>();
 });
 ```
 
@@ -50,34 +40,26 @@ You rarely need these. They live under `pulse.Advanced` so the everyday settings
 
 ## Stores
 
-The one-line setups:
+Choose one inside `AddPulseSharp(pulse => …)`:
 
 | Method | Store |
 |---|---|
-| `services.AddPulseSharpInMemory(…)` | In memory: lost when the app stops. For learning, tests and samples |
-| `services.AddPulseSharpSqlite("app.db", …)` | SQLite file (`PulseSharp.Sqlite`). Takes a file name or a full connection string |
-| `services.AddPulseSharpPostgreSql(connectionString, …)` | PostgreSQL in the `pulsesharp` schema (`PulseSharp.PostgreSql`) |
-
-Inside `AddPulseSharp(pulse => …)`:
-
-| Method | Store |
-|---|---|
-| `UseInMemory()` | Keeps everything in memory. Lost when the app stops - for tests, samples and learning |
 | `UseSqlite("app.db")` | SQLite file (a file name or a full connection string) - durable, for desktop, mobile and small servers (`PulseSharp.Sqlite`). See [Stores](/guide/stores) |
 | `UsePostgreSql(connectionString, schema)` | PostgreSQL, several app instances (`PulseSharp.PostgreSql`, schema `pulsesharp` by default). See [Stores](/guide/stores#postgresql) |
 | `UseStore(store)` | Your own `IPulseStore` implementation |
+
+For tests, `PulseSharp.Testing` adds `UseInMemory()`, a store that keeps everything in memory. See [Testing](/guide/testing).
 
 ## Handlers
 
 | Method | Adds |
 |---|---|
-| `When<TEvent>(handler)` | The simplest event handler. Named `when-{EventName}`; one per event type |
-| `On<TEvent>(name, handler)` | An inline event handler with a name you choose, the event context and a cancellation token |
-| `AddHandler<TEvent, THandler>()` | An event handler class (AOT safe) |
-| `OnJob<TJob>(handler)` | The inline handler of a job type. `async job => …`, or `async (job, context, ct) => …` for progress and cancel |
-| `AddJobHandler<TJob, THandler>()` | The handler class of a job type (AOT safe) |
-| `AddHandler<THandler>()` | Every event and job interface the class implements (reflection) |
-| `AddHandlersFromAssembly(assembly)` | Every handler class in an assembly (reflection) |
+| `On<TEvent>(name, handler)` | An inline event handler: `async (sale, context, ct) => …`, with a name you choose |
+| `AddHandler<TEvent, THandler>()` | An event handler class, created from dependency injection |
+| `OnJob<TJob>(handler)` | The inline handler of a job type: `async (job, context, ct) => …` |
+| `AddJobHandler<TJob, THandler>()` | The handler class of a job type |
+
+All four work with trimming and Native AOT.
 
 ## Startup checks
 

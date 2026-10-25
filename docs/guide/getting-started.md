@@ -26,13 +26,19 @@ using PulseSharp;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.AddPulseSharpSqlite("demo.db", pulse =>
+builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.When<SaleCompleted>(sale => Console.WriteLine($"Sale {sale.Number}: {sale.Total:C}"));
+    pulse.UseSqlite("demo.db");
 
-    pulse.OnJob<ExportReport>(async job =>
+    pulse.On<SaleCompleted>("print-sales", (sale, context, ct) =>
     {
-        await Task.Delay(500);
+        Console.WriteLine($"Sale {sale.Number}: {sale.Total:C}");
+        return Task.CompletedTask;
+    });
+
+    pulse.OnJob<ExportReport>(async (job, context, ct) =>
+    {
+        await Task.Delay(500, ct);
         Console.WriteLine($"Report for {job.Day:yyyy-MM-dd} exported.");
     });
 });
@@ -57,10 +63,11 @@ public sealed record ExportReport(DateOnly Day);
 What is going on:
 
 - An **event** (`SaleCompleted`) is a plain record that says something happened. A **job** (`ExportReport`) is a plain record that says what work to do.
-- `AddPulseSharpSqlite("demo.db", …)` sets everything up and keeps the data in `demo.db`.
-- `When<SaleCompleted>(…)` runs your code for every sale, in the order the sales happened.
+- `AddPulseSharp(…)` sets everything up, and `UseSqlite("demo.db")` keeps the data in `demo.db`.
+- `On<SaleCompleted>("print-sales", …)` runs your code for every sale, in the order the sales happened. PulseSharp remembers how far `print-sales` has got under that name.
 - `OnJob<ExportReport>(…)` is the code that does the job.
-- `Emit` saves the event and returns at once. Your `When` code runs in the background.
+- `ct` is a cancellation token: it is cancelled when the app stops, or when a handler takes too long. Pass it on to what you await.
+- `Emit` saves the event and returns at once. Your handler runs in the background.
 - `Enqueue` saves the job. A worker runs it in the background.
 
 ## 3. Run it
@@ -80,7 +87,7 @@ Run it again. You see two sales, not four: PulseSharp remembers which events it 
 ## Next steps
 
 - [Emitting events](/guide/events) - streams, expected versions, transactions
-- [Handlers](/guide/handlers) - named handlers, handler classes, assembly scanning
+- [Handlers](/guide/handlers) - inline handlers and handler classes
 - [Failures and control](/guide/failures) - retries, stopped streams, retry / skip / rewind
 - [Background jobs](/guide/jobs) - delays, progress, cancel, leases
 - A complete runnable sample lives in [`samples/ConsoleSample`](https://github.com/pulsesharp/pulsesharp/tree/main/samples/ConsoleSample).

@@ -260,19 +260,6 @@ public sealed partial class SyncTests
     }
 
     [Fact]
-    public void SyncWithCloudNeedsOnlyTheAddressAndTheKey()
-    {
-        var services = new ServiceCollection();
-        services.AddPulseSharp(pulse =>
-        {
-            pulse.UseInMemory();
-            pulse.SyncWithCloud("https://cloud.example.com/pulse/sync", "key-1");
-        });
-
-        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IPulseSync));
-    }
-
-    [Fact]
     public void ExplainsMissingOrInvalidSyncSettings()
     {
         var noServer = Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddPulseSharp(pulse =>
@@ -283,8 +270,8 @@ public sealed partial class SyncTests
         var twice = Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddPulseSharp(pulse =>
         {
             pulse.UseInMemory();
-            pulse.SyncWithCloud("https://cloud.example.com/pulse/sync", "key-1");
-            pulse.SyncWithCloud("https://cloud.example.com/pulse/sync", "key-1");
+            pulse.UseSync(sync => (sync.Server, sync.ApiKey) = (new Uri("https://cloud.example.com/pulse/sync"), "key-1"));
+            pulse.UseSync(sync => (sync.Server, sync.ApiKey) = (new Uri("https://cloud.example.com/pulse/sync"), "key-1"));
         }));
         var nobody = Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddPulseSharp(pulse =>
         {
@@ -353,7 +340,11 @@ public sealed partial class SyncTests
                 (useStore ?? (cloudPulse => cloudPulse.UseInMemory()))(pulse);
                 pulse.Node = "cloud";
                 pulse.Advanced.PollInterval = TimeSpan.FromMilliseconds(50);
-                pulse.When<SaleCompleted>(sale => sales.Enqueue(sale));
+                pulse.On<SaleCompleted>("sales", (sale, _, _) =>
+                {
+                    sales.Enqueue(sale);
+                    return Task.CompletedTask;
+                });
                 pulse.UseSyncServer(configure ?? (server => server.AllowNode("till-1", "key-1").AllowNode("till-2", "key-2").PushAnyStream()));
             });
 
@@ -442,7 +433,11 @@ public sealed partial class SyncTests
 
                 pulse.Node = node;
                 pulse.Advanced.PollInterval = TimeSpan.FromMilliseconds(50);
-                pulse.When<ProductChanged>(product => products.Enqueue(product));
+                pulse.On<ProductChanged>("products", (product, _, _) =>
+                {
+                    products.Enqueue(product);
+                    return Task.CompletedTask;
+                });
                 pulse.UseSync(sync =>
                 {
                     sync.Server = new Uri("http://localhost/pulse/sync");
