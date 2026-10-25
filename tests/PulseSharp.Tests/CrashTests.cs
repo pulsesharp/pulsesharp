@@ -72,18 +72,7 @@ public abstract class CrashTests : IDisposable
 
     private async Task<IReadOnlyList<int>> RunCrashAppAndKill(int stuckOnSale, string killWhen)
     {
-        var folder = AppContext.BaseDirectory.Replace("PulseSharp.Tests", "PulseSharp.CrashApp", StringComparison.Ordinal);
-        var start = new ProcessStartInfo(Path.Combine(folder, OperatingSystem.IsWindows() ? "PulseSharp.CrashApp.exe" : "PulseSharp.CrashApp"))
-        {
-            RedirectStandardOutput = true
-        };
-        foreach (var argument in CrashAppStore)
-        {
-            start.ArgumentList.Add(argument);
-        }
-
-        start.ArgumentList.Add(stuckOnSale.ToString(CultureInfo.InvariantCulture));
-        using var app = Process.Start(start)!;
+        using var app = TestApps.Start("PulseSharp.CrashApp", [.. CrashAppStore, stuckOnSale.ToString(CultureInfo.InvariantCulture)]);
         var handled = new List<int>();
         try
         {
