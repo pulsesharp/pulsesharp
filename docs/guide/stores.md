@@ -4,7 +4,7 @@ A **store** is where PulseSharp keeps events, handler cursors and jobs. You choo
 
 | Store | Package | Use it for |
 |---|---|---|
-| In-memory | `PulseSharp` (built in) | Tests, samples, learning. Everything is lost when the app stops. |
+| In-memory | `PulseSharp.Testing` (`UseInMemory()`) | Tests only. Everything is lost when the app stops. |
 | SQLite | `PulseSharp.Sqlite` | Desktop, mobile and small server apps. Events and jobs survive a restart. |
 | PostgreSQL | `PulseSharp.PostgreSql` | Servers, including several app instances sharing one database. |
 

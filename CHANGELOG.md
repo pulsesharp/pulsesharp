@@ -4,7 +4,7 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-One way to do each thing, before a real app is built on PulseSharp.
+Planned as `0.8.0-alpha`. One way to do each thing, before a real app is built on PulseSharp.
 
 ### Changed
 
