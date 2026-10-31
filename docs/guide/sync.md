@@ -151,7 +151,7 @@ By default a device receives every event it did not emit. To receive only some s
 pulse.UseSync(sync =>
 {
     sync.Server = new Uri("https://cloud.example.com/pulse/sync");
-    sync.ApiKey = builder.Configuration["SyncKey"];
+    sync.ApiKey = builder.Configuration["SyncKey"]!;
     sync.PullStreams.Add("Product-");
     sync.PullStreams.Add("Store-7-");
 });

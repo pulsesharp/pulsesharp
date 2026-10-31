@@ -93,8 +93,6 @@ The engine on the in-memory test store, one machine, BenchmarkDotNet short run (
 | Emit to a SQLite file (pooled, fully durable) | ~0.66 ms | 5.7 KB |
 | Emit to PostgreSQL (one round trip, local Docker) | ~2.0 ms | 6.2 KB |
 
-Numbers for the PostgreSQL store will follow with that store.
-
 ## Why PulseSharp?
 
 - **Lightweight.** The contracts package has no dependencies. You add only the packages you use.

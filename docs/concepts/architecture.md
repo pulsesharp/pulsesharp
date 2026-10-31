@@ -52,7 +52,7 @@ They work together: a handler can enqueue a job.
 
 ## Jobs
 
-1. `Enqueue` saves the job, optionally with `runAt` for later.
+1. `Enqueue` saves the job, optionally with `RunAt` for later.
 2. A worker claims the next due job with a lease, and renews the lease while the job runs.
 3. On success the job is finished. On error it is retried with backoff, then marked failed.
 4. If the worker dies, the lease expires and another worker picks the job up again.
@@ -81,7 +81,7 @@ The engine contains all the logic. A store only saves and reads. A store impleme
 | Wake-up *(optional, `INotifyingStore`)* | Tell other instances about new data at once. The PostgreSQL store uses `LISTEN/NOTIFY`. Without it, the timer is used. |
 | Schema | Create and upgrade its own tables, safely when several instances start at once |
 
-A shared **conformance test suite** (`PulseSharp.Testing`) runs against every store, official or community. A store that passes it behaves like every other store.
+A shared **conformance test suite** runs against every official store, so they all behave the same way. It is not published yet; a later version will offer it to community stores.
 
 ### Transactional outbox
 
@@ -94,7 +94,7 @@ await pulse.Emit(new SaleStream(sale.Id), new SaleCompleted(sale.Id, sale.Total)
 await tx.CommitAsync(ct);
 ```
 
-`transaction` is the ADO.NET `DbTransaction`, shared by SQLite, PostgreSQL, SQL Server and EF Core. Handlers see the event only after the commit.
+`Transaction` is a plain ADO.NET `DbTransaction`. The SQLite and PostgreSQL stores save the event in it. Handlers see the event only after the commit.
 
 ## Packages
 
@@ -104,15 +104,15 @@ await tx.CommitAsync(ct);
 | `PulseSharp` | `Microsoft.Extensions.*.Abstractions` only |
 | `PulseSharp.Sqlite` | `Microsoft.Data.Sqlite` |
 | `PulseSharp.PostgreSql` | `Npgsql` |
-| `PulseSharp.Sync` | core; the server endpoint also needs ASP.NET Core |
-| `PulseSharp.Monitor` | ASP.NET Core |
-| `PulseSharp.Testing` | xUnit |
+| `PulseSharp.Sync` | `PulseSharp` only (HTTP from .NET itself) |
+| `PulseSharp.Sync.Server` | `PulseSharp` and ASP.NET Core |
+| `PulseSharp.Testing` | `PulseSharp` and `Microsoft.Extensions.DependencyInjection`. Works with any test framework |
+| `PulseSharp.Monitor` *(planned)* | ASP.NET Core |
 
 The target framework is .NET 8 or later. Reflection is never required: explicit registration always works, so trimming and Native AOT are supported.
 
 ## Observability
 
-- `ILogger` throughout.
-- `ActivitySource("PulseSharp")`: one trace span per emit, handler call and job run, linked to the caller's trace (OpenTelemetry).
-- `Meter("PulseSharp")`: events emitted, handler duration, failures, lag and running jobs.
-- Hooks such as `OnHandlerFailed`, so that you can send alerts with any tool. PulseSharp sends no email itself.
+- `ILogger` throughout, category `PulseSharp`, with fixed event ids for retries, stopped streams and failed jobs, so any logging tool can raise alerts. PulseSharp sends no email itself. See [Hooks for alerts](/guide/failures#hooks-for-alerts).
+- `IPulseControl` for health checks: cursors, failed streams and jobs.
+- Planned, not built yet: trace spans (`ActivitySource`, OpenTelemetry) and metrics (`Meter`).

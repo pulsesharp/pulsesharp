@@ -136,5 +136,5 @@ pulse.UseStore(new MyDatabaseStore(connectionString));
 A store only saves and reads: ordering, retries, leases and delivery live in the engine, and data arrives already serialized as bytes. The [API reference](/reference/core#ipulsestore) documents every method, including the rules for atomic job claiming and lease ownership.
 
 ::: info Conformance tests
-PulseSharp runs one shared test suite against every official store. It will be published as `PulseSharp.Testing` so community stores can prove they behave the same way.
+PulseSharp runs one shared test suite against every official store. It is not published yet; a later version will offer it so community stores can prove they behave the same way.
 :::
