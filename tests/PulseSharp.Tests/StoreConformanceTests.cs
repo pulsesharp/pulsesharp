@@ -2,6 +2,7 @@ using System.Text;
 using PulseSharp.PostgreSql;
 using PulseSharp.Sqlite;
 using PulseSharp.Stores;
+using PulseSharp.Testing;
 
 namespace PulseSharp.Tests;
 

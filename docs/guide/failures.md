@@ -75,8 +75,9 @@ The handler handles every stored event again, in order per stream.
 A handler that never returns would hold up its stream for good, and PulseSharp would never notice. So every handler has a time limit, `Advanced.HandlerTimeout` (5 minutes by default). When the time is up, the handler's cancellation token is cancelled. If the handler has not stopped 10 poll intervals later (10 seconds by default), PulseSharp stops waiting for it. The attempt counts as failed, with a message that says so, and the usual retries follow. If the next attempt works, the stream goes on by itself.
 
 ```csharp
-builder.Services.AddPulseSharpSqlite("app.db", pulse =>
+builder.Services.AddPulseSharp(pulse =>
 {
+    pulse.UseSqlite("app.db");
     pulse.Advanced.HandlerTimeout = TimeSpan.FromMinutes(1);
 });
 ```

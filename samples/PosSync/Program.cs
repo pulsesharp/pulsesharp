@@ -48,13 +48,26 @@ async Task<IHost> StartTill(string name)
 {
     var builder = Host.CreateApplicationBuilder();
     builder.Logging.ClearProviders();
-    builder.Services.AddPulseSharpSqlite(Path.Combine(folder, $"{name}.db"), pulse =>
+    builder.Services.AddPulseSharp(pulse =>
     {
+        pulse.UseSqlite(Path.Combine(folder, $"{name}.db"));
         pulse.Node = name;
-        pulse.SyncWithCloud($"{CloudAddress}/pulse/sync", $"{name}-secret");
+        pulse.UseSync(sync =>
+        {
+            sync.Server = new Uri($"{CloudAddress}/pulse/sync");
+            sync.ApiKey = $"{name}-secret";
+        });
 
-        pulse.When<PriceChanged>(price => Console.WriteLine($"  [{name}] New price for {price.Sku}: {price.Price:0.00}"));
-        pulse.When<StockWentNegative>(stock => Console.WriteLine($"  [{name}] Warning: {stock.Sku} was sold {-stock.Left} more time(s) than in stock"));
+        pulse.On<PriceChanged>("prices", (price, _, _) =>
+        {
+            Console.WriteLine($"  [{name}] New price for {price.Sku}: {price.Price:0.00}");
+            return Task.CompletedTask;
+        });
+        pulse.On<StockWentNegative>("stock-warnings", (stock, _, _) =>
+        {
+            Console.WriteLine($"  [{name}] Warning: {stock.Sku} was sold {-stock.Left} more time(s) than in stock");
+            return Task.CompletedTask;
+        });
     });
 
     var host = builder.Build();
@@ -72,14 +85,14 @@ async Task<WebApplication> StartCloud()
     builder.WebHost.UseUrls(CloudAddress);
     builder.Services.AddPulseSharp(pulse =>
     {
-        pulse.UseInMemory();
+        pulse.UseSqlite(Path.Combine(folder, "cloud.db"));
         pulse.Node = "cloud";
         pulse.UseSyncServer(server => server
             .AllowNode("till-1", "till-1-secret")
             .AllowNode("till-2", "till-2-secret")
             .PushStreams(node => [$"Sale-{node}-"]));
 
-        pulse.When<SaleCompleted>(async sale =>
+        pulse.On<SaleCompleted>("stock", async (sale, _, _) =>
         {
             var left = stock.AddOrUpdate(sale.Sku, -sale.Quantity, (_, current) => current - sale.Quantity);
             Console.WriteLine($"  [cloud]  {sale.Till} sold {sale.Quantity} x {sale.Sku} for {sale.Total:0.00} (stock left: {left})");

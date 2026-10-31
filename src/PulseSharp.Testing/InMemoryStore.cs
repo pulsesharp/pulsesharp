@@ -1,6 +1,7 @@
 using System.Data.Common;
+using PulseSharp.Stores;
 
-namespace PulseSharp.Stores;
+namespace PulseSharp.Testing;
 
 internal sealed class InMemoryStore : ISyncStore
 {

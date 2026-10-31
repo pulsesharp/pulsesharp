@@ -7,9 +7,12 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
 builder.Services.AddSingleton<ReceiptPrinter>();
 
+var database = Path.Combine(Path.GetTempPath(), "pulsesharp-console-sample.db");
+File.Delete(database);
+
 builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.UseInMemory();
+    pulse.UseSqlite(database);
     pulse.Node = "till-1";
     pulse.MaxAttempts = 2;
     pulse.RetryDelay = TimeSpan.FromMilliseconds(200);

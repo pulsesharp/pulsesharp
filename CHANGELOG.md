@@ -4,6 +4,22 @@ All notable changes to PulseSharp are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.0-alpha] - 2026-10-31
+
+One way to do each thing, before a real app is built on PulseSharp.
+
+### Changed
+
+- **Breaking:** one way to set PulseSharp up: `services.AddPulseSharp(pulse => pulse.UseSqlite("app.db"))`, or `UsePostgreSql(…)` or `UseStore(…)`. `AddPulseSharpSqlite`, `AddPulseSharpPostgreSql` and `AddPulseSharpInMemory` are removed. Sync is set up with `UseSync(sync => …)` only; `SyncWithCloud` is removed.
+- **Breaking:** one way per kind of handler, all of them safe for trimming and Native AOT: `On<TEvent>(name, (event, context, ct) => …)`, `AddHandler<TEvent, THandler>()`, `OnJob<TJob>((job, context, ct) => …)` and `AddJobHandler<TJob, THandler>()`. Removed: `When`, `OnJob` without the context and the token, and `AddHandler<THandler>()` and `AddHandlersFromAssembly`, which found handlers by reflection. A class that handles several event types is added once per event type.
+- **Breaking:** the in-memory store moved to `PulseSharp.Testing` (`pulse.UseInMemory()`), so an app can never lose its events by choosing it by mistake. `AddPulseSharp` without a store stops at startup and says how to choose one.
+- `samples/ConsoleSample` and `samples/PosSync` keep their data in SQLite.
+- Docs: every page checked against the current API, and every code example compiled. The architecture page no longer promises tracing, metrics or failure hooks that are not built yet (they are planned), and the API reference no longer lists a private method.
+
+### Tested
+
+- Upgrades: a SQLite and a PostgreSQL database made by the published `0.4.0-alpha` open with the current version. Handled events are not delivered again, a stream carries on at the next position, a stopped handler stays stopped until it is retried, a waiting job runs, and the newer tables are added.
+
 ## [0.7.0-alpha] - 2026-10-24
 
 A round of hardening found by building a complete example shop (a cloud API and desktop tills), then a round of simplifying: much faster delivery, handlers and jobs that heal when stuck or after a crash, a limit on what devices may write, and events that can be saved together.
@@ -162,7 +178,8 @@ First preview. Events only, with the in-memory store.
 
 - `IPulse.Enqueue` throws `NotSupportedException`. Jobs arrive in 0.2.
 
-[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.7.0-alpha...HEAD
+[Unreleased]: https://github.com/pulsesharp/pulsesharp/compare/v0.8.0-alpha...HEAD
+[0.8.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.7.0-alpha...v0.8.0-alpha
 [0.7.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.6.0-alpha...v0.7.0-alpha
 [0.6.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.5.0-alpha...v0.6.0-alpha
 [0.5.0-alpha]: https://github.com/pulsesharp/pulsesharp/compare/v0.4.0-alpha...v0.5.0-alpha

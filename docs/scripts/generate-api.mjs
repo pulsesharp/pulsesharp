@@ -5,12 +5,12 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const packages = [
   { id: 'PulseSharp.Abstractions', page: 'abstractions', intro: 'Contracts for handlers and libraries. No dependencies.' },
-  { id: 'PulseSharp', page: 'core', intro: 'The engine: setup, the in-memory store, the control API and the store contract.' },
+  { id: 'PulseSharp', page: 'core', intro: 'The engine: setup, the control API and the store contract.' },
   { id: 'PulseSharp.Sqlite', page: 'sqlite', intro: 'The SQLite store.' },
   { id: 'PulseSharp.PostgreSql', page: 'postgresql', intro: 'The PostgreSQL store.' },
   { id: 'PulseSharp.Sync', page: 'sync', intro: 'Device to cloud sync: the client that runs on the device.' },
   { id: 'PulseSharp.Sync.Server', page: 'sync-server', intro: 'Device to cloud sync: the ASP.NET Core endpoint on the server.' },
-  { id: 'PulseSharp.Testing', page: 'testing', intro: 'Test helpers for apps that use PulseSharp. Reference it from test projects only.' }
+  { id: 'PulseSharp.Testing', page: 'testing', intro: 'Test helpers for apps that use PulseSharp, including the in-memory store. Reference it from test projects only.' }
 ]
 
 const builtInNames = {
@@ -36,6 +36,17 @@ function readDeclarations(packageId) {
     }
   }
   return declarations
+}
+
+// [GeneratedRegex] methods get XML docs from the source generator, even when they are private.
+function readHiddenMethods(packageId) {
+  const hidden = new Set()
+  for (const file of sourceFiles(join(root, 'src', packageId))) {
+    for (const [, name] of readFileSync(file, 'utf8').matchAll(/\[GeneratedRegex\([^\n]*\)\]\s*\n[^\n(]*?\b(\w+)\(/g)) {
+      hidden.add(name)
+    }
+  }
+  return hidden
 }
 
 function shortTypeName(fullName, methodTypeParameters = []) {
@@ -182,7 +193,10 @@ const parsed = packages.map((pkg) => {
   if (!existsSync(path)) {
     throw new Error(`Missing ${path}. Run "dotnet build -c Release" first.`)
   }
-  return { ...pkg, members: parseMembers(readFileSync(path, 'utf8')), declarations: readDeclarations(pkg.id) }
+  const hiddenMethods = readHiddenMethods(pkg.id)
+  const members = parseMembers(readFileSync(path, 'utf8'))
+    .filter((member) => !(member.kind === 'M' && hiddenMethods.has(member.name.replace(/``\d+$/, ''))))
+  return { ...pkg, members, declarations: readDeclarations(pkg.id) }
 })
 
 const typePages = new Map()

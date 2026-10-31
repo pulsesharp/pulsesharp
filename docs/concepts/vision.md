@@ -64,5 +64,6 @@ That makes them easy to synchronise. Two sides only need to **exchange the event
 | 0.5 | Device ↔ cloud sync |
 | 0.6 | API review before the stable release |
 | 0.7 | Hardening and simplifying: faster delivery, healing after crashes and outages, proven by tests that kill a real app |
+| 0.8 | One way to do each thing, safe for Native AOT, and tests that open databases made by an older version |
 | 1.0 | Stable API: events, jobs, SQLite, PostgreSQL and sync |
 | 1.x | Monitor (a web UI for streams, cursors, jobs and sync), SQL Server, recurring jobs |

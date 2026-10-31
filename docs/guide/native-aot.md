@@ -1,10 +1,10 @@
 # Trimming and Native AOT
 
-PulseSharp itself is built and checked with the trimming and Native AOT analyzers. Whether your app is AOT-ready depends on how you register handlers.
+PulseSharp itself is built and checked with the trimming and Native AOT analyzers.
 
-## AOT-safe registration
+## Registration
 
-These methods use no reflection:
+Every way to add a handler names its types in your code, so nothing is found by reflection at runtime:
 
 ```csharp
 pulse.On<SaleCompleted>("sales-log", HandleSale);
@@ -12,17 +12,6 @@ pulse.AddHandler<SaleCompleted, UpdateStock>();
 pulse.OnJob<ExportReport>(RunExport);
 pulse.AddJobHandler<ExportReport, ExportReportHandler>();
 ```
-
-## Reflection-based registration
-
-These find types at runtime, which trimming can't see:
-
-```csharp
-pulse.AddHandler<UpdateStock>();
-pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
-```
-
-They are marked `[RequiresDynamicCode]` and `[RequiresUnreferencedCode]`, so the compiler warns you when you publish with `PublishAot` or `PublishTrimmed`. Use the explicit methods in those apps.
 
 ## JSON
 

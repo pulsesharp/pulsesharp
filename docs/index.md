@@ -50,10 +50,11 @@ dotnet add package PulseSharp.Sqlite --prerelease
 ```
 
 ```csharp
-builder.Services.AddPulseSharpSqlite("app.db", pulse =>
+builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.When<SaleCompleted>(async sale => await PrintReceipt(sale));
-    pulse.OnJob<ExportReport>(async report => await Export(report));
+    pulse.UseSqlite("app.db");
+    pulse.On<SaleCompleted>("receipts", async (sale, context, ct) => await PrintReceipt(sale, ct));
+    pulse.OnJob<ExportReport>(async (report, context, ct) => await Export(report, ct));
 });
 
 await pulse.Emit(new SaleCompleted(sale.Id, sale.Total));
@@ -61,7 +62,7 @@ await pulse.Enqueue(new ExportReport(today));
 ```
 
 ::: warning Preview
-PulseSharp is in preview. Events, jobs and device to cloud sync work with the in-memory, SQLite and PostgreSQL stores today; see the [roadmap](/concepts/vision#roadmap). The API may change before 1.0.
+PulseSharp is in preview. Events, jobs and device to cloud sync work with the SQLite and PostgreSQL stores today; see the [roadmap](/concepts/vision#roadmap). The API may change before 1.0.
 :::
 
 </div>

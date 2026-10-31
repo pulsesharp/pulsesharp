@@ -27,8 +27,12 @@ public sealed class PostgreSqlOutageTests : IDisposable
         await using var app = await TestHost.Start(pulse =>
         {
             pulse.UsePostgreSql(_connectionString);
-            pulse.When<SaleCompleted>(sale => handled.Enqueue(sale.Number));
-            pulse.OnJob<ImportProducts>(job =>
+            pulse.On<SaleCompleted>("sales", (sale, _, _) =>
+            {
+                handled.Enqueue(sale.Number);
+                return Task.CompletedTask;
+            });
+            pulse.OnJob<ImportProducts>((job, _, _) =>
             {
                 imported.Enqueue(job.File);
                 return Task.CompletedTask;

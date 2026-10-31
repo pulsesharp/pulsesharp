@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <OldPulseSharpVersion>0.4.0-alpha</OldPulseSharpVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PulseSharp.Sqlite" Version="$(OldPulseSharpVersion)" />
+    <PackageReference Include="PulseSharp.PostgreSql" Version="$(OldPulseSharpVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+</Project>

@@ -44,7 +44,7 @@ public sealed class JobTests
         {
             pulse.MaxAttempts = 1;
             pulse.Advanced.KeepFinishedJobs = TimeSpan.FromMilliseconds(200);
-            pulse.OnJob<ImportProducts>(job => job.File == "broken.csv"
+            pulse.OnJob<ImportProducts>((job, _, _) => job.File == "broken.csv"
                 ? throw new InvalidOperationException("Broken file.")
                 : Task.CompletedTask);
         });
@@ -64,7 +64,7 @@ public sealed class JobTests
         await using var host = await TestHost.Start(pulse =>
         {
             pulse.Advanced.KeepFinishedJobs = null;
-            pulse.OnJob<ImportProducts>(_ => Task.CompletedTask);
+            pulse.OnJob<ImportProducts>((_, _, _) => Task.CompletedTask);
         });
 
         var done = await host.Pulse.Enqueue(new ImportProducts("products.csv"));

@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\src\PulseSharp.Sync.Server\PulseSharp.Sync.Server.csproj" />
     <ProjectReference Include="..\..\src\PulseSharp.Testing\PulseSharp.Testing.csproj" />
     <ProjectReference Include="..\PulseSharp.CrashApp\PulseSharp.CrashApp.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\PulseSharp.OldVersionApp\PulseSharp.OldVersionApp.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

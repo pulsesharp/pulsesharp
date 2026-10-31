@@ -197,7 +197,7 @@ public sealed class DeliveryTests
     {
         var recorder = new Recorder();
         await using var host = await TestHost.Start(
-            pulse => pulse.AddHandler<SaleLedger>(),
+            pulse => pulse.AddHandler<SaleCompleted, SaleLedger>().AddHandler<SaleRefunded, SaleLedger>(),
             services => services.AddSingleton(recorder)
         );
 

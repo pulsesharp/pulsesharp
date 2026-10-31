@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PulseSharp.Delivery;
@@ -15,10 +14,6 @@ namespace PulseSharp;
 /// </summary>
 public sealed class PulseSharpBuilder
 {
-    private const string ReflectionMessage =
-        "Finds the handled event and job types with reflection. With trimming or Native AOT, " +
-        "use AddHandler<TEvent, THandler>() and AddJobHandler<TJob, THandler>() instead.";
-
     private readonly IServiceCollection _services;
     private readonly Dictionary<string, Subscription> _subscriptions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JobRegistration> _jobs = new(StringComparer.Ordinal);
@@ -57,7 +52,7 @@ public sealed class PulseSharpBuilder
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Settings most apps never need to change: polling, parallelism, leases and JSON options.
+    /// Settings most apps never need to change: polling, parallelism, time limits, clean-up and JSON options.
     /// </summary>
     public PulseSharpAdvanced Advanced { get; } = new();
 
@@ -66,15 +61,6 @@ public sealed class PulseSharpBuilder
     internal TypeNames EventNames { get; } = TypeNames.ForEvents();
 
     internal TypeNames JobNames { get; } = TypeNames.ForJobs();
-
-    /// <summary>
-    /// Keeps events in memory. Everything is lost when the app stops: use it for tests and samples.
-    /// </summary>
-    /// <returns>This builder.</returns>
-    public PulseSharpBuilder UseInMemory()
-    {
-        return UseStore(new InMemoryStore());
-    }
 
     /// <summary>
     /// Uses a store: the place where events, cursors and jobs are kept. Store packages call this from their own
@@ -87,56 +73,6 @@ public sealed class PulseSharpBuilder
         ArgumentNullException.ThrowIfNull(store);
         _createStore = () => store;
         return this;
-    }
-
-    /// <summary>
-    /// Runs some code every time a <typeparamref name="TEvent"/> is emitted. The simplest way to react to an event.
-    /// </summary>
-    /// <typeparam name="TEvent">The event type.</typeparam>
-    /// <param name="handler">The code that handles one event.</param>
-    /// <returns>This builder.</returns>
-    /// <exception cref="InvalidOperationException"><typeparamref name="TEvent"/> already has a handler added with <c>When</c>.</exception>
-    /// <remarks>
-    /// The handler is named <c>when-{EventName}</c>, so one event type can have one <c>When</c> handler.
-    /// To add more, give each a name with <see cref="On{TEvent}(string, Func{TEvent, EventContext, CancellationToken, Task})"/>.
-    /// </remarks>
-    /// <example>
-    /// <code>
-    /// pulse.When&lt;SaleCompleted&gt;(async sale => await printer.Print(sale));
-    /// </code>
-    /// </example>
-    public PulseSharpBuilder When<TEvent>(Func<TEvent, Task> handler)
-        where TEvent : notnull
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        return AddWhen<TEvent>(handler, (@event, _, _) => handler(@event));
-    }
-
-    /// <summary>
-    /// Runs some code every time a <typeparamref name="TEvent"/> is emitted. The simplest way to react to an event.
-    /// </summary>
-    /// <typeparam name="TEvent">The event type.</typeparam>
-    /// <param name="handler">The code that handles one event.</param>
-    /// <returns>This builder.</returns>
-    /// <exception cref="InvalidOperationException"><typeparamref name="TEvent"/> already has a handler added with <c>When</c>.</exception>
-    /// <remarks>
-    /// The handler is named <c>when-{EventName}</c>, so one event type can have one <c>When</c> handler.
-    /// To add more, give each a name with <see cref="On{TEvent}(string, Func{TEvent, EventContext, CancellationToken, Task})"/>.
-    /// </remarks>
-    /// <example>
-    /// <code>
-    /// pulse.When&lt;SaleCompleted&gt;(sale => Console.WriteLine($"Sold for {sale.Total}"));
-    /// </code>
-    /// </example>
-    public PulseSharpBuilder When<TEvent>(Action<TEvent> handler)
-        where TEvent : notnull
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        return AddWhen<TEvent>(handler, (@event, _, _) =>
-        {
-            handler(@event);
-            return Task.CompletedTask;
-        });
     }
 
     /// <summary>
@@ -189,32 +125,6 @@ public sealed class PulseSharpBuilder
     }
 
     /// <summary>
-    /// Runs some code for every job of type <typeparamref name="TJob"/>. A job type has exactly one handler.
-    /// </summary>
-    /// <typeparam name="TJob">The job type. Its stored name is the class name, or the name in <see cref="JobNameAttribute"/>.</typeparam>
-    /// <param name="handler">The code that runs one job.</param>
-    /// <returns>This builder.</returns>
-    /// <exception cref="InvalidOperationException"><typeparamref name="TJob"/> already has a handler.</exception>
-    /// <remarks>To report progress or stop when the job is cancelled, use the overload that receives a <see cref="JobContext"/>.</remarks>
-    /// <example>
-    /// <code>
-    /// pulse.OnJob&lt;SendEmail&gt;(async email => await mailer.Send(email));
-    /// </code>
-    /// </example>
-    public PulseSharpBuilder OnJob<TJob>(Func<TJob, Task> handler)
-        where TJob : notnull
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-
-        AddJob(
-            typeof(TJob),
-            handler,
-            (_, data, _, _) => handler(Json.Deserialize<TJob>(data))
-        );
-        return this;
-    }
-
-    /// <summary>
     /// Adds an inline handler for jobs of type <typeparamref name="TJob"/>. A job type has exactly one handler.
     /// </summary>
     /// <typeparam name="TJob">The job type. Its stored name is the class name, or the name in <see cref="JobNameAttribute"/>.</typeparam>
@@ -253,57 +163,6 @@ public sealed class PulseSharpBuilder
             (services, data, context, cancellationToken) =>
                 InvokeJobHandlerClass<TJob, THandler>(services, Json.Deserialize<TJob>(data), context, cancellationToken)
         );
-        return this;
-    }
-
-    /// <summary>
-    /// Adds a handler class for every <see cref="IEventHandler{TEvent}"/> and <see cref="IJobHandler{TJob}"/> it implements.
-    /// </summary>
-    /// <typeparam name="THandler">The handler class. Its stable name is the class name, or the name in <see cref="HandlerNameAttribute"/>.</typeparam>
-    /// <returns>This builder.</returns>
-    /// <exception cref="InvalidOperationException">
-    /// <typeparamref name="THandler"/> implements neither interface, another handler already uses the same name,
-    /// or a job type already has another handler.
-    /// </exception>
-    [RequiresDynamicCode(ReflectionMessage)]
-    [RequiresUnreferencedCode(ReflectionMessage)]
-    public PulseSharpBuilder AddHandler<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.Interfaces)] THandler>()
-        where THandler : class
-    {
-        if (!AddHandlerClass(typeof(THandler)))
-        {
-            throw new InvalidOperationException(
-                $"{typeof(THandler).FullName} implements neither IEventHandler<TEvent> nor IJobHandler<TJob>."
-            );
-        }
-
-        return this;
-    }
-
-    /// <summary>
-    /// Adds every handler class in an assembly: each public or internal, non-abstract class that implements
-    /// <see cref="IEventHandler{TEvent}"/> or <see cref="IJobHandler{TJob}"/>.
-    /// </summary>
-    /// <param name="assembly">The assembly to scan, for example <c>typeof(Program).Assembly</c>.</param>
-    /// <returns>This builder.</returns>
-    /// <exception cref="InvalidOperationException">Two handlers share a name, or a job type has two handlers.</exception>
-    [RequiresDynamicCode(ReflectionMessage)]
-    [RequiresUnreferencedCode(ReflectionMessage)]
-    public PulseSharpBuilder AddHandlersFromAssembly(Assembly assembly)
-    {
-        ArgumentNullException.ThrowIfNull(assembly);
-
-        var handlerTypes = assembly
-            .GetTypes()
-            .Where(type => type is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false })
-            .Where(IsPublicOrInternal)
-            .OrderBy(type => type.FullName, StringComparer.Ordinal);
-
-        foreach (var handlerType in handlerTypes)
-        {
-            AddHandlerClass(handlerType);
-        }
-
         return this;
     }
 
@@ -367,39 +226,10 @@ public sealed class PulseSharpBuilder
     {
         if (_createStore is null)
         {
-            throw new InvalidOperationException("PulseSharp needs a store. Choose one, for example pulse.UseInMemory().");
+            throw new InvalidOperationException("PulseSharp needs a store. Choose one: pulse.UseSqlite(\"app.db\") or pulse.UsePostgreSql(connectionString).");
         }
 
         return _createStore();
-    }
-
-    [RequiresDynamicCode(ReflectionMessage)]
-    [RequiresUnreferencedCode(ReflectionMessage)]
-    private bool AddHandlerClass(Type handlerType)
-    {
-        var eventTypes = HandledTypes(handlerType, typeof(IEventHandler<>));
-        var jobTypes = HandledTypes(handlerType, typeof(IJobHandler<>));
-
-        var addHandler = typeof(PulseSharpBuilder).GetMethod(nameof(AddHandlerFor), BindingFlags.NonPublic | BindingFlags.Instance)!;
-        foreach (var eventType in eventTypes)
-        {
-            addHandler.MakeGenericMethod(eventType, handlerType).Invoke(this, null);
-        }
-
-        var addJobHandler = typeof(PulseSharpBuilder).GetMethod(nameof(AddJobHandlerFor), BindingFlags.NonPublic | BindingFlags.Instance)!;
-        foreach (var jobType in jobTypes)
-        {
-            addJobHandler.MakeGenericMethod(jobType, handlerType).Invoke(this, null);
-        }
-
-        return eventTypes.Count + jobTypes.Count > 0;
-    }
-
-    private void AddJobHandlerFor<TJob, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] THandler>()
-        where TJob : notnull
-        where THandler : class, IJobHandler<TJob>
-    {
-        AddJobHandler<TJob, THandler>();
     }
 
     private void AddJob(Type jobType, object source, JobInvoker invoker)
@@ -436,49 +266,6 @@ public sealed class PulseSharpBuilder
             var handler = scope.ServiceProvider.GetRequiredService<THandler>();
             await handler.Handle(job, context, cancellationToken).ConfigureAwait(false);
         }
-    }
-
-    private static bool IsPublicOrInternal(Type type)
-    {
-        return type.IsPublic || type.IsNotPublic || type.IsNestedPublic || type.IsNestedAssembly;
-    }
-
-    [RequiresUnreferencedCode(ReflectionMessage)]
-    private static List<Type> HandledTypes(Type handlerType, Type openHandlerInterface)
-    {
-        return handlerType
-            .GetInterfaces()
-            .Where(type => type.IsGenericType && type.GetGenericTypeDefinition() == openHandlerInterface)
-            .Select(type => type.GetGenericArguments()[0])
-            .ToList();
-    }
-
-    private void AddHandlerFor<TEvent, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] THandler>()
-        where TEvent : notnull
-        where THandler : class, IEventHandler<TEvent>
-    {
-        AddHandler<TEvent, THandler>();
-    }
-
-    private PulseSharpBuilder AddWhen<TEvent>(object source, Func<TEvent, EventContext, CancellationToken, Task> handler)
-        where TEvent : notnull
-    {
-        var name = $"when-{EventNames.NameOf(typeof(TEvent))}";
-        if (_subscriptions.ContainsKey(name))
-        {
-            throw new InvalidOperationException(
-                $"{typeof(TEvent).Name} already has a When handler. To add another handler for the same event, " +
-                $"give it a name: pulse.On<{typeof(TEvent).Name}>(\"your-handler-name\", ...)."
-            );
-        }
-
-        AddToSubscription(
-            name,
-            source,
-            typeof(TEvent),
-            (_, data, context, cancellationToken) => handler(Json.Deserialize<TEvent>(data), context, cancellationToken)
-        );
-        return this;
     }
 
     private void AddToSubscription(string name, object source, Type eventType, EventInvoker invoker)

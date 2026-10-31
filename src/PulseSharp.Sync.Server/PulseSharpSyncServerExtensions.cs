@@ -18,8 +18,9 @@ public static class PulseSharpSyncServerExtensions
     /// <exception cref="InvalidOperationException">No node is allowed, or the sync server is added twice.</exception>
     /// <example>
     /// <code>
-    /// builder.Services.AddPulseSharpPostgreSql(connectionString, pulse =>
+    /// builder.Services.AddPulseSharp(pulse =>
     /// {
+    ///     pulse.UsePostgreSql(connectionString);
     ///     pulse.Node = "cloud";
     ///     pulse.UseSyncServer(server => server.AllowNode("till-1", tillKey).PushStreams(node => [$"Sale-{node}-"]));
     /// });

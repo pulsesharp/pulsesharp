@@ -4,7 +4,7 @@ A **store** is where PulseSharp keeps events, handler cursors and jobs. You choo
 
 | Store | Package | Use it for |
 |---|---|---|
-| In-memory | `PulseSharp` (built in) | Tests, samples, learning. Everything is lost when the app stops. |
+| In-memory | `PulseSharp.Testing` (`UseInMemory()`) | Tests only. Everything is lost when the app stops. |
 | SQLite | `PulseSharp.Sqlite` | Desktop, mobile and small server apps. Events and jobs survive a restart. |
 | PostgreSQL | `PulseSharp.PostgreSql` | Servers, including several app instances sharing one database. |
 
@@ -17,8 +17,8 @@ dotnet add package PulseSharp.Sqlite --prerelease
 ```csharp
 builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.UseSqlite("Data Source=pos.db");
-    pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
+    pulse.UseSqlite("pos.db");
+    pulse.AddHandler<SaleCompleted, PrintReceipt>();
 });
 ```
 
@@ -61,7 +61,7 @@ dotnet add package PulseSharp.PostgreSql --prerelease
 builder.Services.AddPulseSharp(pulse =>
 {
     pulse.UsePostgreSql(builder.Configuration.GetConnectionString("Events")!);
-    pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
+    pulse.AddHandler<SaleCompleted, PrintReceipt>();
 });
 ```
 
@@ -123,7 +123,7 @@ pulse.Advanced.JsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.We
 };
 ```
 
-An event or job that can't be serialized fails at `Emit` / `Enqueue` - even with the in-memory store - so you find out in your tests, not in production.
+An event or job that can't be serialized fails at `Emit` / `Enqueue` - even with the in-memory test store - so you find out in your tests, not in production.
 
 ## Writing your own store
 
@@ -136,5 +136,5 @@ pulse.UseStore(new MyDatabaseStore(connectionString));
 A store only saves and reads: ordering, retries, leases and delivery live in the engine, and data arrives already serialized as bytes. The [API reference](/reference/core#ipulsestore) documents every method, including the rules for atomic job claiming and lease ownership.
 
 ::: info Conformance tests
-PulseSharp runs one shared test suite against every official store. It will be published as `PulseSharp.Testing` so community stores can prove they behave the same way.
+PulseSharp runs one shared test suite against every official store. It is not published yet; a later version will offer it so community stores can prove they behave the same way.
 :::

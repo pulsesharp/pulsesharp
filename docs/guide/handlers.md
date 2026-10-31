@@ -2,26 +2,14 @@
 
 A handler reacts to events. Every handler has a **stable name**: PulseSharp stores how far each handler has got, per stream, under that name (its *cursor*).
 
-## The short way: `When`
+## Inline handlers
 
-```csharp
-builder.Services.AddPulseSharpSqlite("app.db", pulse =>
-{
-    pulse.When<SaleCompleted>(sale => Console.WriteLine($"Sold for {sale.Total}"));
-    pulse.When<PriceChanged>(async change => await shop.UpdatePrice(change.Sku, change.NewPrice));
-});
-```
-
-`When` names the handler for you (`when-SaleCompleted`), so one event type can have one `When` handler. To react to the same event in a second place, give that handler a name with `On`.
-
-## Named inline handlers
-
-`On` takes a name you choose, and gives your code the [event context](#the-event-context) and a cancellation token:
+For a few lines of code, add the handler inline with `On`. It takes a name you choose, and gives your code the [event context](#the-event-context) and a cancellation token:
 
 ```csharp
 builder.Services.AddPulseSharp(pulse =>
 {
-    pulse.UseInMemory();
+    pulse.UseSqlite("app.db");
     pulse.On<SaleCompleted>("sales-log", (sale, context, ct) =>
     {
         logger.LogInformation("Sale {Id}: {Total}", sale.SaleId, sale.Total);
@@ -47,8 +35,7 @@ public sealed class UpdateStock(IStockRepository stock) : IEventHandler<SaleComp
 Register it:
 
 ```csharp
-pulse.AddHandler<SaleCompleted, UpdateStock>();   // explicit, trimming and Native AOT safe
-pulse.AddHandler<UpdateStock>();                  // finds the handled event types by reflection
+pulse.AddHandler<SaleCompleted, UpdateStock>();
 ```
 
 A new instance is created in a new dependency-injection **scope** for every event, so scoped services (like a `DbContext`) work as expected.
@@ -66,7 +53,7 @@ Two handlers with the same name stop the app at startup with a clear message.
 
 ### One class, several event types
 
-A class can handle several event types. They share **one name and one order per stream**:
+A class can handle several event types. Add it once per event type; they share **one name and one order per stream**:
 
 ```csharp
 [HandlerName("sale-ledger")]
@@ -75,19 +62,12 @@ public sealed class SaleLedger : IEventHandler<SaleCompleted>, IEventHandler<Sal
     public Task Handle(SaleCompleted sale, EventContext context, CancellationToken ct) { … }
     public Task Handle(SaleRefunded refund, EventContext context, CancellationToken ct) { … }
 }
+
+pulse.AddHandler<SaleCompleted, SaleLedger>();
+pulse.AddHandler<SaleRefunded, SaleLedger>();
 ```
 
 In a stream with *completed → refunded → completed*, the ledger sees exactly that order.
-
-## Scanning an assembly
-
-Register every public or internal handler class (events **and** jobs) of an assembly in one line:
-
-```csharp
-pulse.AddHandlersFromAssembly(typeof(Program).Assembly);
-```
-
-Abstract classes, generic definitions and private nested classes are skipped.
 
 ## The event context
 
