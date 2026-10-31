@@ -38,6 +38,17 @@ function readDeclarations(packageId) {
   return declarations
 }
 
+// [GeneratedRegex] methods get XML docs from the source generator, even when they are private.
+function readHiddenMethods(packageId) {
+  const hidden = new Set()
+  for (const file of sourceFiles(join(root, 'src', packageId))) {
+    for (const [, name] of readFileSync(file, 'utf8').matchAll(/\[GeneratedRegex\([^\n]*\)\]\s*\n[^\n(]*?\b(\w+)\(/g)) {
+      hidden.add(name)
+    }
+  }
+  return hidden
+}
+
 function shortTypeName(fullName, methodTypeParameters = []) {
   let text = fullName
     .replace(/``(\d+)/g, (_, index) => methodTypeParameters[Number(index)] ?? `T${index}`)
@@ -182,7 +193,10 @@ const parsed = packages.map((pkg) => {
   if (!existsSync(path)) {
     throw new Error(`Missing ${path}. Run "dotnet build -c Release" first.`)
   }
-  return { ...pkg, members: parseMembers(readFileSync(path, 'utf8')), declarations: readDeclarations(pkg.id) }
+  const hiddenMethods = readHiddenMethods(pkg.id)
+  const members = parseMembers(readFileSync(path, 'utf8'))
+    .filter((member) => !(member.kind === 'M' && hiddenMethods.has(member.name.replace(/``\d+$/, ''))))
+  return { ...pkg, members, declarations: readDeclarations(pkg.id) }
 })
 
 const typePages = new Map()
